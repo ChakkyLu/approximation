@@ -30,8 +30,8 @@ extern int DecActivity(string spec_filename, string allregions_filename, string 
 extern int SandActivity(string spec_filename, string allregions_filename, string sandregion_filename, int low_act_level, int high_act_level, int num_cycles_low, int num_cycles_high);
 
 
-extern int DoSimEqMod(string spec_filename, int method);
-extern int DoSimEqLim(string spec_filename, int eqmode, int amount);
+extern int TestSimEq(string spec_filename, int method);
+extern int DoSimEqLim(string spec_filename, int eqmode, int amount, int submode);
 extern int DoSimEqConnect(string spec_filename, int mode, int amount);
 extern int DoSimEqModTwo(string spec_filename_1, string spec_filename_2, int mode, int amount);
 
@@ -55,7 +55,7 @@ const char sand_act_str[] = "sandact";
 
 const char sim_eq_lim_str[] = "simeqlim";
 const char sim_eq_con_str[] = "simeqcon";
-const char sim_eq_mod_sin_str[] = "simeqmodsin";
+const char test_sim_eq[] = "testeq";
 const char sim_eq_mod_two_str[] = "simeqmodtwo";
 
 
@@ -317,32 +317,41 @@ int main(int argc, char *argv[]) {
     MSG("mytest command is JUST for my test!");
     MyTest(argv[2]);
   }
-  else if (cmd_str == sim_eq_mod_sin_str) {
+  else if (cmd_str == test_sim_eq) {
     if (argc != 4) {
       MSG("Incorrect number of parameters! Use as following:");
       msg_sat_act_inc_cmd();
       return 0;
     }
-    DoSimEqMod(argv[2], stoi(string(argv[3])));
+    TestSimEq(argv[2], stoi(string(argv[3])));
   }
   else if (cmd_str == sim_eq_lim_str) {
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
       MSG("Incorrect number of parameters! Use as following:");
       msg_sim_eq_lim_cmd();
       return 0;
     }
+
     int mode = stoi(string(argv[3]));
     int amount = stoi(string(argv[4]));
+
+    int submode = 0;
+    if (argc == 6) {
+      submode = stoi(string(argv[5]));
+    }
+
     if(amount!=-1 && amount<0){
       MSG("You must select more than 1 gates or input -1 to select all gates ");
     }
+
     if(amount==-1)  MSG("You have chose all gates");
     else MSG("You select "+string(argv[4])+" gates randomly");
     if(mode==0)  MSG("This mode is to do exhaustive equivalency checking of selected gates");
     if(mode==1) MSG("This mode is to do exhaustive equivalency checking after checking its wrong cases after random simulation");
     if(mode==2) MSG("This mode is to do random simulation of selected gate by 10000 times");
     if(mode==3) MSG("This mode is to do random simulation by difference times(1000/5000/10000/20000/50000)");
-    DoSimEqLim(argv[2], mode, amount);
+
+    DoSimEqLim(argv[2], mode, amount, submode);
   }
   else if (cmd_str == sim_eq_con_str) {
     if (argc != 5) {
