@@ -705,22 +705,38 @@ bool isInVector(vector<string> v1, string s1) {
   return false;
 }
 
-int notfouts(NodeVector v1, Node* node){
-  int key=1;
+// int notfouts(NodeVector v1, Node* node){
+//   int key=1;
+//
+//   for ( int i = 0; i < v1.size(); i++){
+//     if (v1[i]->name == node->name) return 0;
+//     if (v1[i]->level <= node->level) {
+//
+//       long int h1 = v1[i]->level;
+//       long int h2 = node->level;
+//
+//       if((h2-h1)<50) key=notfouts(v1[i]->outputs, node);
+//       else return 0;
+//     }
+//     if(key==0) return 0;
+//   }
+//   return key;
+// }
 
-  for ( int i = 0; i < v1.size(); i++){
-    if (v1[i]->name == node->name) return 0;
-    if (v1[i]->level <= node->level) {
-
-      long int h1 = v1[i]->level;
-      long int h2 = node->level;
-      
-      if((h2-h1)<50) key=notfouts(v1[i]->outputs, node);
-      else return 0;
-    }
-    if(key==0) return 0;
+void fanouts(Node* n1, set<string> &effect_nodes){
+  long int n1_size = n1->outputs.size();
+  for (int i = 0; i < n1_size; i++) {
+    effect_nodes.insert(n1->outputs[i]->name);
+    fanouts(n1->outputs[i], effect_nodes);
   }
-  return key;
+}
+
+bool notfouts(set<string> effect_nodes, string node_name) {
+  std::set<string>::iterator it;
+  it = effect_nodes.find(node_name);
+  if (it == effect_nodes.end()) return true;
+  return false;
+
 }
 
 void debug_msg(string kk){
@@ -827,9 +843,13 @@ void GetPossibleConnection(Circuit *spec_cir, string current_node_name, NodeVect
   spec_cir->ResetLevels();
   spec_cir->LevelizeSortTopological(false);
   spec_cir->SetIndexes();
+
+  std::set<string> effect_nodes;
+  fanouts(current_node, effect_nodes);
+
   for (long i=0; i<spec_cir->all_nodes.size(); i++){
     n1 = spec_cir->all_nodes[i];
-    if(notfouts(current_node->outputs, n1) and current_node->name != n1->name and current_node->inputs[0]->name != n1->name and n1->name != current_node->inputs[1]->name and !n1->is_input and !n1->is_output){
+    if(notfouts(effect_nodes, n1->name) and current_node->name != n1->name and current_node->inputs[0]->name != n1->name and n1->name != current_node->inputs[1]->name and !n1->is_input and !n1->is_output){
       possible_connections.push_back(n1);
     }
   }
@@ -1074,12 +1094,9 @@ int DoSimEqModRes(Circuit &new_spec_cir, NodeVector target_nodes, string spec_fi
       std::vector<Circuit*> impl_cirs;
       std::thread sim_threads[thread_num];
 
-      Node* target_node = new Node;
-
       string target_node_name = "";
 
       long int node_size = target_nodes.size();
-      double * diff;
 
       for (int i = 0; i < node_size; i++) {
         target_node_name = target_nodes[i]->name;
@@ -1462,7 +1479,6 @@ int DoSimEqMulGate(Circuit &new_spec_cir, string spec_filename, NodeVector first
 
   double needtoadd = 1;
   double max_error = 0;
-  int cur_num = 0;
   NodeVector second_nodes;
   NodeVector target_nodes;
 
@@ -2570,9 +2586,30 @@ int TestSimEq(string spec_filename, int method) {
   switch (method) {
     case 0: {
       Circuit* c1 = new_spec_cir.GetDuplicate("","","");
-      GetWrongCircuit(*c1, "n39", 15);
-      c1->WriteBlif("err.blif");
-      delete c1;
+      cout << "given circuit has " << c1->all_nodes.size() << " 's nodes'" << endl;
+      cout << "please select one node" << endl;
+      int i;
+      cin >> i;
+      std::set<string> effect_nodes;
+      Node *n1 = c1->all_nodes[i];
+      cout << "You select node " << n1->name << endl << "Effect nodes has " << endl;
+      fanouts(n1, effect_nodes);
+      int everyline = 5;
+      set<string>::iterator it;
+      for (it=effect_nodes.begin(); it!=effect_nodes.end(); it++) {
+        cout << *it << "\t";
+        everyline --;
+        if (everyline<0) {
+          cout << endl;
+          everyline = 5;
+        }
+      }
+      cout << endl;
+      cout << "please input a node" << endl;
+      string test_node;
+      cin >> test_node;
+      cout << "the test node is on effect_nodes " << notfouts(effect_nodes, test_node) << endl;
+
     }break;
     case 3: {
       string nn = "n39";
