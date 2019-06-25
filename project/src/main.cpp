@@ -7,6 +7,9 @@ using namespace std;
 
 using namespace nodecircuit;
 
+#include "neural_network.h"
+using namespace neuralnetwork;
+
 #include "verilog_gate_parser.h"
 #include "blif_parser.h"
 
@@ -34,6 +37,10 @@ extern int TestSimEq(string spec_filename, int method);
 extern int DoSimEqLim(string spec_filename, int eqmode, int amount, int submode);
 extern int DoSimEqConnect(string spec_filename, int mode, int amount);
 extern int DoSimEqModTwo(string spec_filename_1, string spec_filename_2, int mode, int amount);
+extern int TwoSimEq(string spec_filename, string impl_filename, int method);
+
+
+extern int SetUpNN(string filename, string labelfilename);
 
 
 extern int MyTest(string filename);
@@ -57,6 +64,9 @@ const char sim_eq_lim_str[] = "simeqlim";
 const char sim_eq_con_str[] = "simeqcon";
 const char test_sim_eq[] = "testeq";
 const char sim_eq_mod_two_str[] = "simeqmodtwo";
+const char two_cir_eq[] = "twosimeq";
+
+const char set_up_neural_network[] = "setupnn";
 
 
 inline void msg_sim_debug_cmd () {
@@ -380,6 +390,23 @@ int main(int argc, char *argv[]) {
     if(amount==-1)  MSG("You have chose all gates");
     else MSG("You select "+string(argv[5])+" gates randomly");
     DoSimEqModTwo(argv[2], argv[3], mode , amount);
+  }
+  else if (cmd_str == two_cir_eq) {
+    if (argc != 5) {
+      MSG("Incorrect number of parameters!");
+      return 0;
+    } else {
+      int mode = stoi(string(argv[4]));
+      TwoSimEq(argv[2], argv[3], mode);
+    }
+  }
+  else if (cmd_str == set_up_neural_network) {
+    if (argc != 4) {
+      MSG("PLEASE FOLLOW INSTRUCTOR");
+    } else {
+      MSG("SET UP NEURAL NETWORK");
+      SetUpNN(argv[2], argv[3]);
+    }
   }
   else {
     MSG("Use one of the following commands: ");

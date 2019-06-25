@@ -1,0 +1,6 @@
+#SYNOPSYS
+setenv SNPSLMD_LICENSE_FILE=1700@133.11.58.5:1700@133.11.58.6:1700@133.11.58.7
+setenv LM_LICENSE_FILE 1700@133.11.58.5:1700@133.11.58.6:1700@133.11.58.7
+
+setenv SYNOPSYS_DIR /cad_linux/synopsys
+set path=$PATH:/cad_linux/synopsys/syn_vO-2018.06-SP4/syn/O-2018.06-SP4/syn/bin

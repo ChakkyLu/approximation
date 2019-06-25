@@ -1,0 +1,3 @@
+ABC command line: " read forsat.blif; resyn2; sat; ".
+
+UNSATISFIABLE  Time =  2178.35 sec

@@ -66,6 +66,7 @@ namespace nodecircuit {
     int Simulate(Val64Vector &input_vals, Val64Vector &output_vals);
     int Simulate(Val64Vector &input_vals, Val64Vector &output_vals, Val64Vector &all_vals);
     int Simplify();
+    int Simplify2();
     int Simplify(NodeVector& target_nodes);
     int ApplyInOutSimplify(ValVector &input_vals, ValVector &output_vals);
 

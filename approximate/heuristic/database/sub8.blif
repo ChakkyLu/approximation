@@ -1,0 +1,464 @@
+.names k00 z1000
+1 0
+.names k01 z1001
+1 0
+.names k02 z1002
+1 0
+.names k03 z1003
+1 0
+.names k04 z1004
+1 0
+.names k05 z1005
+1 0
+.names k06 z1006
+1 0
+.names k07 z1007
+1 0
+.names k08 z1008
+1 0
+.names k09 z1009
+1 0
+.names k10 z1010
+1 0
+.names k11 z1011
+1 0
+.names k12 z1012
+1 0
+.names k13 z1013
+1 0
+.names k14 z1014
+1 0
+.names k15 z1015
+1 0
+.names z1000 c1000
+1 1
+.names z1000 l00
+1 0
+.names z1001 c1000 l01
+10 1
+01 1
+.names z1001 c1000 c1001
+11 1
+.names z1002 c1001 l02
+10 1
+01 1
+.names z1002 c1001 c1002
+11 1
+.names z1003 c1002 l03
+10 1
+01 1
+.names z1003 c1002 c1003
+11 1
+.names z1004 c1003 l04
+10 1
+01 1
+.names z1004 c1003 c1004
+11 1
+.names z1005 c1004 l05
+10 1
+01 1
+.names z1005 c1004 c1005
+11 1
+.names z1006 c1005 l06
+10 1
+01 1
+.names z1006 c1005 c1006
+11 1
+.names z1007 c1006 l07
+10 1
+01 1
+.names z1007 c1006 c1007
+11 1
+.names z1008 c1007 l08
+10 1
+01 1
+.names z1008 c1007 c1008
+11 1
+.names z1009 c1008 l09
+10 1
+01 1
+.names z1009 c1008 c1009
+11 1
+.names z1010 c1009 l10
+10 1
+01 1
+.names z1010 c1009 c1010
+11 1
+.names z1011 c1010 l11
+10 1
+01 1
+.names z1011 c1010 c1011
+11 1
+.names z1012 c1011 l12
+10 1
+01 1
+.names z1012 c1011 c1012
+11 1
+.names z1013 c1012 l13
+10 1
+01 1
+.names z1013 c1012 c1013
+11 1
+.names z1014 c1013 l14
+10 1
+01 1
+.names z1014 c1013 c1014
+11 1
+.names z1015 c1014 l15
+10 1
+01 1
+.names z1015 c1014 c1015
+11 1
+.names l00 l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12 l13 l14 l15 l16
+0000000000000000 0
+.names m16
+0
+.names m00 l00 q53
+11 1
+.names m00 l00 q54
+00 1
+.names q53 q54 s00
+00 1
+.names m01 l01 q56
+11 1
+.names m01 l01 q57
+00 1
+.names q56 q57 q58
+00 1
+.names q53 q58 q59
+11 1
+.names q53 q58 q60
+00 1
+.names q59 q60 s01
+00 1
+.names q56 q59 q62
+00 1
+.names m02 l02 q63
+11 1
+.names m02 l02 q64
+00 1
+.names q63 q64 q65
+00 1
+.names q62 q65 q66
+01 1
+.names q62 q65 q67
+10 1
+.names q66 q67 s02
+00 1
+.names q63 q66 q69
+00 1
+.names m03 l03 q70
+11 1
+.names m03 l03 q71
+00 1
+.names q70 q71 q72
+00 1
+.names q69 q72 q73
+01 1
+.names q69 q72 q74
+10 1
+.names q73 q74 s03
+00 1
+.names q70 q73 q76
+00 1
+.names m04 l04 q77
+11 1
+.names m04 l04 q78
+00 1
+.names q77 q78 q79
+00 1
+.names q76 q79 q80
+01 1
+.names q76 q79 q81
+10 1
+.names q80 q81 s04
+00 1
+.names q77 q80 q83
+00 1
+.names m05 l05 q84
+11 1
+.names m05 l05 q85
+00 1
+.names q84 q85 q86
+00 1
+.names q83 q86 q87
+01 1
+.names q83 q86 q88
+10 1
+.names q87 q88 s05
+00 1
+.names q84 q87 q90
+00 1
+.names m06 l06 q91
+11 1
+.names m06 l06 q92
+00 1
+.names q91 q92 q93
+00 1
+.names q90 q93 q94
+01 1
+.names q90 q93 q95
+10 1
+.names q94 q95 s06
+00 1
+.names q91 q94 q97
+00 1
+.names m07 l07 q98
+11 1
+.names m07 l07 q99
+00 1
+.names q98 q99 q100
+00 1
+.names q97 q100 q101
+01 1
+.names q97 q100 q102
+10 1
+.names q101 q102 s07
+00 1
+.names q98 q101 q104
+00 1
+.names m08 l08 q105
+11 1
+.names m08 l08 q106
+00 1
+.names q105 q106 q107
+00 1
+.names q104 q107 q108
+01 1
+.names q104 q107 q109
+10 1
+.names q108 q109 s08
+00 1
+.names q105 q108 q111
+00 1
+.names m09 l09 q112
+11 1
+.names m09 l09 q113
+00 1
+.names q112 q113 q114
+00 1
+.names q111 q114 q115
+01 1
+.names q111 q114 q116
+10 1
+.names q115 q116 s09
+00 1
+.names q112 q115 q118
+00 1
+.names m10 l10 q119
+11 1
+.names m10 l10 q120
+00 1
+.names q119 q120 q121
+00 1
+.names q118 q121 q122
+01 1
+.names q118 q121 q123
+10 1
+.names q122 q123 s10
+00 1
+.names q119 q122 q125
+00 1
+.names m11 l11 q126
+11 1
+.names m11 l11 q127
+00 1
+.names q126 q127 q128
+00 1
+.names q125 q128 q129
+01 1
+.names q125 q128 q130
+10 1
+.names q129 q130 s11
+00 1
+.names q126 q129 q132
+00 1
+.names m12 l12 q133
+11 1
+.names m12 l12 q134
+00 1
+.names q133 q134 q135
+00 1
+.names q132 q135 q136
+01 1
+.names q132 q135 q137
+10 1
+.names q136 q137 s12
+00 1
+.names q133 q136 q139
+00 1
+.names m13 l13 q140
+11 1
+.names m13 l13 q141
+00 1
+.names q140 q141 q142
+00 1
+.names q139 q142 q143
+01 1
+.names q139 q142 q144
+10 1
+.names q143 q144 s13
+00 1
+.names q140 q143 q146
+00 1
+.names m14 l14 q147
+11 1
+.names m14 l14 q148
+00 1
+.names q147 q148 q149
+00 1
+.names q146 q149 q150
+01 1
+.names q146 q149 q151
+10 1
+.names q150 q151 s14
+00 1
+.names q147 q150 q153
+00 1
+.names m15 l15 q154
+11 1
+.names m15 l15 q155
+00 1
+.names q154 q155 q156
+00 1
+.names q153 q156 q157
+01 1
+.names q153 q156 q158
+10 1
+.names q157 q158 s15
+00 1
+.names q154 q157 q160
+00 1
+.names m16 l16 q161
+11 1
+.names m16 l16 q162
+00 1
+.names q161 q162 q163
+00 1
+.names q160 q163 q164
+01 1
+.names q160 q163 q165
+10 1
+.names q164 q165 s16
+00 1
+.names q161 q164 s17
+00 0
+.names s00 z2000
+1 0
+.names s01 z2001
+1 0
+.names s02 z2002
+1 0
+.names s03 z2003
+1 0
+.names s04 z2004
+1 0
+.names s05 z2005
+1 0
+.names s06 z2006
+1 0
+.names s07 z2007
+1 0
+.names s08 z2008
+1 0
+.names s09 z2009
+1 0
+.names s10 z2010
+1 0
+.names s11 z2011
+1 0
+.names s12 z2012
+1 0
+.names s13 z2013
+1 0
+.names s14 z2014
+1 0
+.names s15 z2015
+1 0
+.names z2000 c2000
+1 1
+.names z2000 r00
+1 0
+.names z2001 c2000 r01
+10 1
+01 1
+.names z2001 c2000 c2001
+11 1
+.names z2002 c2001 r02
+10 1
+01 1
+.names z2002 c2001 c2002
+11 1
+.names z2003 c2002 r03
+10 1
+01 1
+.names z2003 c2002 c2003
+11 1
+.names z2004 c2003 r04
+10 1
+01 1
+.names z2004 c2003 c2004
+11 1
+.names z2005 c2004 r05
+10 1
+01 1
+.names z2005 c2004 c2005
+11 1
+.names z2006 c2005 r06
+10 1
+01 1
+.names z2006 c2005 c2006
+11 1
+.names z2007 c2006 r07
+10 1
+01 1
+.names z2007 c2006 c2007
+11 1
+.names z2008 c2007 r08
+10 1
+01 1
+.names z2008 c2007 c2008
+11 1
+.names z2009 c2008 r09
+10 1
+01 1
+.names z2009 c2008 c2009
+11 1
+.names z2010 c2009 r10
+10 1
+01 1
+.names z2010 c2009 c2010
+11 1
+.names z2011 c2010 r11
+10 1
+01 1
+.names z2011 c2010 c2011
+11 1
+.names z2012 c2011 r12
+10 1
+01 1
+.names z2012 c2011 c2012
+11 1
+.names z2013 c2012 r13
+10 1
+01 1
+.names z2013 c2012 c2013
+11 1
+.names z2014 c2013 r14
+10 1
+01 1
+.names z2014 c2013 c2014
+11 1
+.names z2015 c2014 r15
+10 1
+01 1
+.names z2015 c2014 c2015
+11 1
+.names s14 s15 h00
+00 0
+.names r14 r15 h01
+00 0
+.names h00 h01 s16 out
+1-0 1
+-11 1
+.end

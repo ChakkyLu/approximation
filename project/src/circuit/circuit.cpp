@@ -367,6 +367,318 @@ namespace nodecircuit {
     return 0;
   }
 
+  // int Circuit::Simplify2() {
+  //   vector<int> indexs;
+  //   NodeVector::iterator it;
+  //
+  //   for (long index = 0; index < all_nodes.size(); index++) {
+  //     Node *cur_node = all_nodes[index];
+  //     if (cur_node->type == NODE_BUF) {
+  //       string s1 = cur_node->inputs[0]->name;
+  //       for (long k=index-1; k > -1; k-- ) {
+  //         Node *n2 = all_nodes[k];
+  //         if (n2->name == s1) {
+  //           all_nodes[k]->name = cur_node->name;
+  //         }
+  //         if (n2->inputs.size()==2 ) {
+  //           if (n2->inputs[0]->name == s1) {
+  //             n2->inputs[0]->name = cur_node->name;
+  //           }
+  //           if (n2->inputs[1]->name == s1) {
+  //             n2->inputs[1]->name = cur_node->name;
+  //           }
+  //         }
+  //       }
+  //       indexs.push_back(index);
+  //     }
+  //     if (cur_node->type == NODE_NOT) {
+  //       string s1 = cur_node->inputs[0]->name;
+  //       for (long k=index-1; k > -1; k-- ) {
+  //         Node *n2 = all_nodes[k];
+  //         if (n2->name == cur_node->name) {
+  //           switch(n2->type) {
+  //             case NODE_AND: { n2->type = NODE_NAND; }
+  //             break;
+  //             case NODE_NAND: {n2->type = NODE_AND; }
+  //             break;
+  //             case NODE_OR: { n2->type = NODE_NOR; }
+  //             break;
+  //             case NODE_NOR: { n2->type = NODE_OR; }
+  //             break;
+  //             case NODE_XOR: { n2->type = NODE_XNOR; }
+  //             break;
+  //             case NODE_XNOR: { n2->type = NODE_XOR; }
+  //             break;
+  //             case NODE_AND2_NP: { n2->type = NODE_NAND2_NP; }
+  //             break;
+  //             case NODE_NAND2_NP: { n2->type = NODE_AND2_NP; }
+  //             break;
+  //             case NODE_AND2_PN: { n2->type = NODE_NAND2_PN; }
+  //             break;
+  //             case NODE_NAND2_PN: { n2->type = NODE_AND2_PN; }
+  //             break;
+  //             default:
+  //             cout << "NODE TYPE NOT SUPPORT!" << endl;
+  //             break;
+  //           }
+  //           // n2->name = cur_node->name;
+  //         }
+  //         if (n2->inputs.size()==2 ) {
+  //           if (n2->inputs[0]->name == s1) {
+  //             n2->inputs[0]->name = cur_node->name;
+  //             switch(n2->type) {
+  //               case NODE_AND: { n2->type = NODE_AND2_NP; }
+  //               break;
+  //               case NODE_NAND: {n2->type = NODE_NAND2_NP; }
+  //               break;
+  //               case NODE_OR: { n2->type = NODE_NAND2_PN; }
+  //               break;
+  //               case NODE_NOR: { n2->type = NODE_AND2_PN; }
+  //               break;
+  //               case NODE_XOR: { n2->type = NODE_XNOR; }
+  //               break;
+  //               case NODE_XNOR: { n2->type = NODE_XOR; }
+  //               break;
+  //               case NODE_AND2_NP: { n2->type = NODE_AND; }
+  //               break;
+  //               case NODE_NAND2_NP: { n2->type = NODE_NAND; }
+  //               break;
+  //               case NODE_AND2_PN: { n2->type = NODE_NOR; }
+  //               break;
+  //               case NODE_NAND2_PN: { n2->type = NODE_OR; }
+  //               break;
+  //               default:
+  //               cout << "NODE TYPE NOT SUPPORT!" << endl;
+  //               break;
+  //             }
+  //           }
+  //           if (n2->inputs[1]->name == s1) {
+  //             n2->inputs[1]->name = cur_node->name;
+  //             switch(n2->type) {
+  //               case NODE_AND: { n2->type = NODE_AND2_PN; }
+  //               break;
+  //               case NODE_NAND: {n2->type = NODE_NAND2_PN; }
+  //               break;
+  //               case NODE_OR: { n2->type = NODE_NAND2_NP; }
+  //               break;
+  //               case NODE_NOR: { n2->type = NODE_AND2_NP; }
+  //               break;
+  //               case NODE_XOR: { n2->type = NODE_XNOR; }
+  //               break;
+  //               case NODE_XNOR: { n2->type = NODE_XOR; }
+  //               break;
+  //               case NODE_AND2_NP: { n2->type = NODE_NOR; }
+  //               break;
+  //               case NODE_NAND2_NP: { n2->type = NODE_OR; }
+  //               break;
+  //               case NODE_AND2_PN: { n2->type = NODE_AND; }
+  //               break;
+  //               case NODE_NAND2_PN: { n2->type = NODE_NAND; }
+  //               break;
+  //               default:
+  //               cout << "NODE TYPE NOT SUPPORT!" << endl;
+  //               break;
+  //             }
+  //           }
+  //         }
+  //       }
+  //       indexs.push_back(index);
+  //     }
+  //   }
+  //
+  //   it = all_nodes.begin();
+  //
+  //   for (int i=0; i<indexs.size(); i++) {
+  //     all_nodes.erase(all_nodes.begin()+indexs[i]-i);
+  //   }
+  //
+  //   return 0;
+  // }
+
+  int Circuit::Simplify2() {
+    vector<int> indexs;
+    NodeVector::iterator it;
+
+    for (long index = 0; index < all_nodes.size(); index++) {
+      Node *cur_node = all_nodes[index];
+      if (cur_node->type == NODE_ZERO) {
+        if (!cur_node->is_output) indexs.push_back(index);
+        NodeVector outputs = cur_node->outputs;
+        for (int ii=0; ii<outputs.size(); ii++) {
+          Node *cur_out = outputs[ii];
+          switch (cur_out->type) {
+            case NODE_BUF:
+            case NODE_AND:
+              cur_out->inputs.clear();
+              cur_out->type = NODE_ZERO;
+              break;
+            case NODE_NOT:
+            case NODE_NAND:
+              cur_out->inputs.clear();
+              cur_out->type = NODE_ONE;
+            break;
+            case NODE_OR:
+            case NODE_XOR:
+              for (NodeVector::iterator jj=cur_out->inputs.begin(); jj!=cur_out->inputs.end(); jj++) {
+                if (*it == cur_node) continue;
+                cur_out->inputs.erase(jj);
+              }
+              cur_out->type = NODE_BUF;
+              break;
+            case NODE_NOR:
+            case NODE_XNOR:
+              for (NodeVector::iterator jj=cur_out->inputs.begin(); jj!=cur_out->inputs.end(); jj++) {
+                if (*it == cur_node) continue;
+                cur_out->inputs.erase(jj);
+              }
+              cur_out->type = NODE_NOT;
+              break;
+            case NODE_AND2_NP: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.erase(cur_out->inputs.begin());
+                cur_out->type = NODE_BUF;
+              }
+              else {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ZERO;
+              }
+            }
+            break;
+            case NODE_NAND2_NP: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.erase(cur_out->inputs.begin());
+                cur_out->type = NODE_NOT;
+              }
+              else {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ZERO;
+              }
+            }
+            break;
+            case NODE_AND2_PN: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ZERO;
+              }
+              else {
+                cur_out->inputs.erase(cur_out->inputs.begin()+1);
+                cur_out->type = NODE_BUF;
+              }
+            }
+            break;
+            case NODE_NAND2_PN: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ONE;
+              }
+              else {
+                cur_out->inputs.erase(cur_out->inputs.begin()+1);
+                cur_out->type = NODE_NOT;
+              }
+            }
+            break;
+            default:
+            cout << "GATE TYPE NOT SUPPORT!!!" << endl;
+            break;
+          }
+        }
+      }
+      if (cur_node->type == NODE_ONE) {
+        if (!cur_node->is_output) indexs.push_back(index);
+        NodeVector outputs = cur_node->outputs;
+        for (int ii=0; ii<outputs.size(); ii++) {
+          Node *cur_out = outputs[ii];
+          switch (cur_out->type) {
+            case NODE_BUF:
+            case NODE_OR:
+              cur_out->inputs.clear();
+              cur_out->type = NODE_ONE;
+              break;
+            case NODE_NOT:
+            case NODE_NOR:
+              cur_out->inputs.clear();
+              cur_out->type = NODE_ZERO;
+            break;
+            case NODE_NAND:
+            case NODE_XOR:
+              for (NodeVector::iterator jj=cur_out->inputs.begin(); jj!=cur_out->inputs.end(); jj++) {
+                if (*it == cur_node) continue;
+                cur_out->inputs.erase(jj);
+              }
+              cur_out->type = NODE_NOT;
+              break;
+            case NODE_AND:
+            case NODE_XNOR:
+              for (NodeVector::iterator jj=cur_out->inputs.begin(); jj!=cur_out->inputs.end(); jj++) {
+                if (*it == cur_node) continue;
+                cur_out->inputs.erase(jj);
+              }
+              cur_out->type = NODE_BUF;
+              break;
+            case NODE_AND2_NP: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ZERO;
+              }
+              else {
+                cur_out->inputs.erase(cur_out->inputs.begin());
+                cur_out->type = NODE_NOT;
+              }
+            }
+            break;
+            case NODE_NAND2_NP: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ONE;
+              }
+              else {
+                cur_out->inputs.erase(cur_out->inputs.begin());
+                cur_out->type = NODE_BUF;
+              }
+            }
+            break;
+            case NODE_AND2_PN: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.erase(cur_out->inputs.begin()+1);
+                cur_out->type = NODE_NOT;
+              }
+              else {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ZERO;
+              }
+            }
+            break;
+            case NODE_NAND2_PN: {
+              if (cur_out->inputs[0] == cur_node) {
+                cur_out->inputs.erase(cur_out->inputs.begin()+1);
+                cur_out->type = NODE_NOT;
+              }
+              else {
+                cur_out->inputs.clear();
+                cur_out->type = NODE_ONE;
+              }
+            }
+            break;
+            case NODE_ZERO:
+            case NODE_ONE:
+            break;
+            default:
+            cout << "GATE TYPE NOT SUPPORT!!!" << endl;
+            break;
+          }
+        }
+      }
+    }
+
+    it = all_nodes.begin();
+
+    for (int i=0; i<indexs.size(); i++) {
+      all_nodes.erase(all_nodes.begin()+indexs[i]-i);
+    }
+
+    return 0;
+  }
+
   int Circuit::Simplify(NodeVector& target_nodes) {
     if (target_nodes.size() == 0)
       return -1;
@@ -415,6 +727,7 @@ namespace nodecircuit {
     while (iter != inputs.end()) {
       if ((*iter)->outputs.size() == 0) {
         (*iter)->is_input = false;
+        (*iter)->type = NODE_ZERO;
         iter = inputs.erase(iter);
       }
       else

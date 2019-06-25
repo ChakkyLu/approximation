@@ -1,0 +1,152 @@
+.model Multi4
+.inputs a0 a1 a2 a3 b0 b1 b2 b3
+.outputs m0 m1 m2 m3 m4 m5 m6 m7
+.names a0 b0 m0
+11 1
+.names a1 b0 n18
+11 1
+.names n19
+0
+.names n18 n19 n20
+11 1
+.names n18 n19 m1
+10 1
+01 1
+.names a2 b0 n23
+11 1
+.names n24
+0
+.names n23 n24 n25
+11 1
+.names n23 n24 n27
+10 1
+01 1
+.names n20 n27 n28
+11 1
+.names n20 n27 n30
+10 1
+01 1
+.names a0 b2 n31
+11 1
+.names n30 n31 n32
+11 1
+.names n30 n31 m2
+10 1
+01 1
+.names n25 n28 n35
+00 0
+.names a3 b0 n36
+11 1
+.names n37
+0
+.names n36 n37 n38
+11 1
+.names n36 n37 n40
+10 1
+01 1
+.names n35 n40 n41
+11 1
+.names n35 n40 n43
+10 1
+01 1
+.names a1 b2 n44
+11 1
+.names n43 n44 n45
+11 1
+.names n43 n44 n47
+10 1
+01 1
+.names n32 n47 n48
+11 1
+.names n32 n47 n50
+10 1
+01 1
+.names a0 b3 n51
+11 1
+.names n50 n51 n52
+11 1
+.names n50 n51 m3
+10 1
+01 1
+.names n45 n48 n55
+00 0
+.names n38 n41 n56
+00 0
+.names a3 b1 n57
+11 1
+.names n56 n57 n58
+11 1
+.names n56 n57 n60
+10 1
+01 1
+.names a2 b2 n61
+11 1
+.names n60 n61 n62
+11 1
+.names n60 n61 n64
+10 1
+01 1
+.names n55 n64 n65
+11 1
+.names n55 n64 n67
+10 1
+01 1
+.names a1 b3 n68
+11 1
+.names n67 n68 n69
+11 1
+.names n67 n68 n71
+10 1
+01 1
+.names n52 n71 n72
+11 1
+.names n52 n71 m4
+10 1
+01 1
+.names n69 n72 n75
+00 0
+.names n62 n65 n76
+00 0
+.names a3 b2 n77
+11 1
+.names n58 n77 n78
+11 1
+.names n58 n77 n80
+10 1
+01 1
+.names n76 n80 n81
+11 1
+.names n76 n80 n83
+10 1
+01 1
+.names a2 b3 n84
+11 1
+.names n83 n84 n85
+11 1
+.names n83 n84 n87
+10 1
+01 1
+.names n75 n87 n88
+11 1
+.names n75 n87 m5
+10 1
+01 1
+.names n85 n88 n91
+00 0
+.names n78 n81 n92
+00 0
+.names a3 b3 n93
+11 1
+.names n92 n93 n94
+11 1
+.names n92 n93 n96
+10 1
+01 1
+.names n91 n96 n97
+11 1
+.names n91 n96 m6
+10 1
+01 1
+.names n94 n97 m7
+00 0
+.end

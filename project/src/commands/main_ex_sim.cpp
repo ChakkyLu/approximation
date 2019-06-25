@@ -11,11 +11,19 @@
 
 #include <sstream>
 
+#include <algorithm>
+
+#include <string>
+
 using namespace std;
 
 #include "circuit.h"
 
 using namespace nodecircuit;
+
+#include "neural_network.h"
+
+using namespace neuralnetwork;
 
 const uint64_t m1 = 0x5555555555555555;
 const uint64_t m2 = 0x3333333333333333;
@@ -158,7 +166,7 @@ int DoExSim(string spec_filename, string output_filename) {
   }
 
   auto end_time = chrono::system_clock::now();
-  chrono::duration<double> diff_time = end_time - start_time;
+chrono::duration<double> diff_time = end_time - start_time;
   cout << endl << "Simulation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
 
   resfile.close();
@@ -207,6 +215,7 @@ int DoSimEq(Circuit &new_spec_cir, Circuit &new_impl_cir, vector<bit64> &po_diff
     // TODO: collect the difference count for each po
     for (int i = 0; i < 8; i++)
       total_diff_count[i] = (i+1)*(num_diff/8);
+    total_diff_count[7] = num_diff;
     cout << "Number of different minterms: " << num_diff << endl;
   }
   else {
@@ -217,7 +226,7 @@ int DoSimEq(Circuit &new_spec_cir, Circuit &new_impl_cir, vector<bit64> &po_diff
     char progress_str[9] = {'.','.','.','.','.','.','.','.',0};
     for (bit64 cur_sim_run = 0; cur_sim_run < num_sim_run; ) {
       if (num_sim_run_scale > 1 && cur_sim_run%num_sim_run_scale == 0) {
-        cout << progress_str << " -> number of minterm differences so far: " << num_diff << endl;
+        // cout << progress_str << " -> number of minterm differences so far: " << num_diff << endl;
         progress_str[cur_sim_run/num_sim_run_scale] = '*';
         total_diff_count[cur_sim_run/num_sim_run_scale] = num_diff;
       }
@@ -277,11 +286,6 @@ int DoSimEq(Circuit &new_spec_cir, Circuit &new_impl_cir) {
 // function to be used for multi-threading
 void DoSimEqTh4(Circuit *new_spec_cir, Circuit *new_impl_cir, vector<bit64> *po_diff_count, vector<bit64> *total_diff_count) {
   DoSimEq(*new_spec_cir, *new_impl_cir, *po_diff_count, *total_diff_count);
-}
-
-// function to be used for multi-threading
-void DoSimEqTh2(Circuit *new_spec_cir, Circuit *new_impl_cir) {
-  DoSimEq(*new_spec_cir, *new_impl_cir);
 }
 
 int DoSimEq(string spec_filename, string impl_filename) {
@@ -380,7 +384,7 @@ int RndSimEq(string spec_filename, string impl_filename, int num_patterns) {
 
   auto end_time = chrono::system_clock::now();
   chrono::duration<double> diff_time = end_time - start_time;
-  cout << endl << "Simulation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+  // cout << endl << "Simulation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
 
   return 0;
 }
@@ -697,6 +701,333 @@ int MyTest(string filename) {
 
 */
 
+
+//****************************//
+int DoSimEq(Circuit &new_spec_cir, Circuit &new_impl_cir, double &WCAE,  double &MRE, bit64 &total_diff_count) {
+
+  WCAE = 0;
+  MRE = 0;
+  double WRE = 0;
+  vector<double> relative_err;
+  Val64Vector pi_vect;
+  Val64Vector po_vect_spec;
+  Val64Vector po_vect_impl;
+  pi_vect.resize(new_spec_cir.inputs.size());
+  po_vect_spec.resize(new_spec_cir.outputs.size());
+  po_vect_impl.resize(new_impl_cir.outputs.size());
+  total_diff_count = 0;
+  int pi_index = 0;
+  while (pi_index < new_spec_cir.inputs.size() && pi_index < NUM_SIG_PAR_CHANGE) {
+    pi_vect[pi_index] = PAT64[pi_index];
+    pi_index++;
+  }
+  while (pi_index < new_spec_cir.inputs.size()) {
+    pi_vect[pi_index] = ZERO64;
+    pi_index++;
+  }
+
+
+  if (pi_vect.size() <= NUM_SIG_PAR_CHANGE) {
+    new_spec_cir.Simulate(pi_vect, po_vect_spec);
+    new_impl_cir.Simulate(pi_vect, po_vect_impl);
+    int num_patterns = pow(2, pi_vect.size());
+    double worst_case_ae = 0;
+    bit64 diff_data = 0;
+
+    vector<double> val_spec;
+    vector<double> val_impl;
+
+    val_spec.resize(num_patterns);
+    val_impl.resize(num_patterns);
+
+
+    for (int i = 0; i < po_vect_spec.size(); i++) {
+      diff_data |= (po_vect_spec[i] ^ po_vect_impl[i]);
+      bit64 cur_res_spec = po_vect_spec[i];
+      bit64 cur_res_impl = po_vect_impl[i];
+      for (int j = 0; j < num_patterns; j++) {
+        if (cur_res_spec%2)
+          val_spec[j] += pow(2, i);
+        if (cur_res_impl%2)
+          val_impl[j] += pow(2, i);
+        cur_res_spec >>= 1;
+        cur_res_impl >>= 1;
+      }
+    }
+
+    int num_diff = 0;
+    for (int i = 0; diff_data != 0 && i < num_patterns; i++) {
+      if (diff_data%2)
+        num_diff++;
+      diff_data >>= 1;
+    }
+
+    total_diff_count = num_diff;
+
+
+    for (int i = 0; i < val_spec.size(); i++) {
+      double cur_res_spec = val_spec[i];
+      double cur_res_impl = val_impl[i];
+      worst_case_ae = abs(cur_res_spec - cur_res_impl) / pow(2, new_spec_cir.outputs.size());
+      WCAE = max(worst_case_ae, WCAE);
+
+      if (cur_res_spec == 0) {
+        // relative_err.push_back(cur_res_impl);
+        MRE += cur_res_impl;
+        // WRE = max(WRE,cur_res_impl);
+      } else {
+        double this_err = abs(cur_res_spec - cur_res_impl) / cur_res_spec;
+        MRE += this_err;
+        // relative_err.push_back(this_err);
+      }
+
+    }
+    // MAE = MAE / num_patterns;
+    // std::sort(relative_err.begin(), relative_err.end());
+    MRE = MRE / num_patterns;
+
+  }
+  else {
+    bit64 num_sim_run = pow(2, new_spec_cir.inputs.size()-NUM_SIG_PAR_CHANGE);
+    bit64 prev_sim_run = 0;
+    bit64 num_sim_run_scale = num_sim_run >> 3; // 8 scales
+    char progress_str[9] = {'.','.','.','.','.','.','.','.',0};
+    double worst_case_ae = 0;
+    bit64 num_diff = 0;
+
+    for (bit64 cur_sim_run = 0; cur_sim_run < num_sim_run; ) {
+
+      // if (num_sim_run_scale > 1 && cur_sim_run%num_sim_run_scale == 0) {
+      //   cout << "up to now, the worst case absolute error rate is " << WCAE << endl;
+      // }
+
+
+      new_spec_cir.Simulate(pi_vect, po_vect_spec);
+      new_impl_cir.Simulate(pi_vect, po_vect_impl);
+      bit64 diff_data = 0;
+
+      vector<double> val_spec;
+      vector<double> val_impl;
+
+      val_spec.resize(64);
+      val_impl.resize(64);
+
+
+
+      for (int i=0; i<po_vect_impl.size(); i++) {
+        bit64 cur_diff_data = po_vect_spec[i] ^ po_vect_impl[i];
+        diff_data |= cur_diff_data;
+        bit64 cur_res_spec = po_vect_spec[i];
+        bit64 cur_res_impl = po_vect_impl[i];
+        for (int j = 0; j < 64; j++) {
+          if (cur_res_spec%2)
+            val_spec[j] += pow(2, i);
+          if (cur_res_impl%2)
+            val_impl[j] += pow(2, i);
+          cur_res_spec >>= 1;
+          cur_res_impl >>= 1;
+        }
+      }
+
+      num_diff += Count64(diff_data);
+
+      for (int i = 0; i < val_spec.size(); i++) {
+        double cur_res_spec = val_spec[i];
+        double cur_res_impl = val_impl[i];
+        worst_case_ae = abs(cur_res_spec - cur_res_impl) / pow(2, new_spec_cir.outputs.size());
+        WCAE = max(worst_case_ae, WCAE);
+        if (cur_res_spec == 0) {
+          // relative_err.push_back(cur_res_impl);
+          MRE += cur_res_impl;
+          // WRE = max(WRE,cur_res_impl);
+        } else {
+          double this_err = abs(cur_res_spec - cur_res_impl) / cur_res_spec;
+          MRE += this_err;
+          // relative_err.push_back(this_err);
+        }
+      }
+
+
+      prev_sim_run = cur_sim_run;
+      cur_sim_run++;
+      if (cur_sim_run < num_sim_run) {
+        bit64 diff_sim_run = prev_sim_run ^cur_sim_run;
+        bit64 cur_sim_run_dup = cur_sim_run;
+        bit64 pi_vect_index = NUM_SIG_PAR_CHANGE;
+        while (diff_sim_run != 0) {
+          if (diff_sim_run%2) {
+            if (cur_sim_run_dup%2) {
+              pi_vect[pi_vect_index] = ONE64;
+            }
+            else {
+              pi_vect[pi_vect_index] = ZERO64;
+            }
+          }
+          diff_sim_run >>= 1;
+          cur_sim_run_dup >>= 1;
+          pi_vect_index++;
+        }
+      }
+
+    }
+
+    double num_patterns = pow(2, new_spec_cir.inputs.size());
+    std::sort(relative_err.begin(), relative_err.end());
+    // MRE = (relative_err[relative_err.size()/2 - 1] + relative_err[relative_err.size()/2])/2;
+    MRE /= num_patterns;
+    total_diff_count = num_diff;
+  }
+
+
+  // cout << "Worst Relative Distance is: " << WRE << endl;
+
+
+
+
+  return 0;
+
+}
+
+int WCAEcheck(Circuit &new_spec_cir, Circuit &new_impl_cir) {
+  double WCAE,MRE;
+  bit64 total_diff_count;
+  DoSimEq(new_spec_cir, new_impl_cir, WCAE, MRE, total_diff_count);
+  cout << "Worst Case Absolute Error Rate: " << WCAE << endl;
+  cout << "Mean Relative Relative Error Rate: " << MRE << endl;
+
+  long int size1 = 0;
+  long int size2 = 0;
+  for (int i=0; i<new_spec_cir.all_nodes.size(); i++) {
+    if (new_spec_cir.all_nodes[i]->inputs.size()==2) size1++;
+  }
+  new_impl_cir.Simplify();
+  // new_impl_cir.Simplify2();
+  new_impl_cir.SetIndexes();
+  for (int i=0; i<new_impl_cir.all_nodes.size(); i++) {
+    if (new_impl_cir.all_nodes[i]->inputs.size()==2) size2++;
+  }
+  double red = (double)(1.0*size2)/ (double) size1;
+  cout << "original size: " << size1 << " current size: " << size2 <<" reduced to be: " << red << endl;
+
+  return 0;
+}
+
+void DoSimEqTh2(Circuit *new_spec_cir, Circuit *new_impl_cir, double *WCAE, double *MAE, bit64 *total_diff) {
+  DoSimEq(*new_spec_cir, *new_impl_cir, *WCAE, *MAE, *total_diff);
+}
+
+int RndSimEq(Circuit &new_spec_cir, Circuit &new_impl_cir, int num_patterns) {
+  if (new_spec_cir.inputs.size() == 0) {
+    MSG("Cannot simulate circuit with no primary input!");
+    return 0;
+  }
+
+  if (new_spec_cir.inputs.size() != new_impl_cir.inputs.size() || new_spec_cir.outputs.size() != new_impl_cir.outputs.size()) {
+    MSG("Number of Pi/Po of two circuits are different!");
+    return 0;
+  }
+
+  auto start_time = chrono::system_clock::now();
+
+  std::srand(std::time(0));
+
+  Val64Vector pi_vect;
+  Val64Vector po_vect_spec;
+  Val64Vector po_vect_impl;
+  pi_vect.resize(new_spec_cir.inputs.size());
+  po_vect_spec.resize(new_spec_cir.outputs.size());
+  po_vect_impl.resize(new_impl_cir.outputs.size());
+  double WCAE = 0;
+  double MRE = 0;
+  double WRE = 0;
+  double ED = 0;
+  vector<double> relative_err;
+
+  bit64 num_sim_run = num_patterns/64;
+  if (num_patterns%64)
+    num_sim_run++;
+  bit64 num_diff = 0;
+  for (bit64 cur_sim_run = 0; cur_sim_run < num_sim_run; cur_sim_run++) {
+    int pi_index = 0;
+    while (pi_index < new_spec_cir.inputs.size()) {
+      bit64 new_rnd = MyRand64();
+      //cout << std::bitset<64>(new_rnd) << endl;
+      // TODO: check it is different from previous simulation pattern(s)
+      pi_vect[pi_index] = new_rnd;
+      pi_index++;
+    }
+    new_spec_cir.Simulate(pi_vect, po_vect_spec);
+    new_impl_cir.Simulate(pi_vect, po_vect_impl);
+    // bit64 diff_data = 0;
+
+    double worst_case_ae = 0;
+
+    vector<double> val_spec;
+    vector<double> val_impl;
+
+    val_spec.resize(num_patterns);
+    val_impl.resize(num_patterns);
+
+
+    for (int i = 0; i < po_vect_spec.size(); i++) {
+      bit64 cur_res_spec = po_vect_spec[i];
+      bit64 cur_res_impl = po_vect_impl[i];
+      for (int j = 0; j < num_patterns; j++) {
+        if (cur_res_spec%2)
+          val_spec[j] += pow(2, i);
+        if (cur_res_impl%2)
+          val_impl[j] += pow(2, i);
+        cur_res_spec >>= 1;
+        cur_res_impl >>= 1;
+      }
+    }
+
+    for (int i = 0; i < val_spec.size(); i++) {
+      double cur_res_spec = val_spec[i];
+      double cur_res_impl = val_impl[i];
+      worst_case_ae = abs(cur_res_spec - cur_res_impl) / pow(2, new_spec_cir.outputs.size());
+      WCAE = max(worst_case_ae, WCAE);
+      ED += abs(cur_res_spec - cur_res_impl);
+      if (cur_res_spec == 0) {
+        MRE += cur_res_impl;
+        // relative_err.push_back(cur_res_impl);
+        // WRE = max(WRE,cur_res_impl);
+      } else {
+        double this_err = abs(cur_res_spec - cur_res_impl) / cur_res_spec;
+        MRE += this_err;
+        // WRE = max(WRE,this_err);
+        // relative_err.push_back(this_err);
+      }
+    }
+
+  }
+  MRE = MRE / num_patterns;
+  ED = ED / num_patterns;
+  cout << "The worst case absolute error rate is: " << WCAE << " (out of " << num_sim_run*64 << " runs)" << endl;
+  cout << "Mean Relative error rate is: " << MRE << " (out of " << num_sim_run*64 << " runs)" << endl;
+  cout << "Average Error Distance is: " << ED << " (out of " << num_sim_run*64 << " runs)" << endl;
+  // cout << "Worst Relative distance is: " << WRE << " (out of " << num_sim_run*64 << " runs)" << endl;
+  auto end_time = chrono::system_clock::now();
+  chrono::duration<double> diff_time = end_time - start_time;
+  //
+
+  long int size1 = 0;
+  long int size2 = 0;
+  for (int i=0; i<new_spec_cir.all_nodes.size(); i++) {
+    if (new_spec_cir.all_nodes[i]->inputs.size()==2) size1++;
+  }
+  new_impl_cir.Simplify();
+  // new_impl_cir.Simplify2();
+  new_impl_cir.SetIndexes();
+  for (int i=0; i<new_impl_cir.all_nodes.size(); i++) {
+    if (new_impl_cir.all_nodes[i]->inputs.size()==2) size2++;
+  }
+  double red = (double)(1.0*size2)/ (double) size1;
+  cout << "original size: " << size1 << " current size: " << size2 <<" reduced to be: " << red << endl;
+  cout << endl << "Simulation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+  return 0;
+}
+
 bool isInVector(vector<string> v1, string s1) {
   vector<string>::iterator it;
   for(it=v1.begin(); it!=v1.end(); it++) {
@@ -704,24 +1035,6 @@ bool isInVector(vector<string> v1, string s1) {
   }
   return false;
 }
-
-// int notfouts(NodeVector v1, Node* node){
-//   int key=1;
-//
-//   for ( int i = 0; i < v1.size(); i++){
-//     if (v1[i]->name == node->name) return 0;
-//     if (v1[i]->level <= node->level) {
-//
-//       long int h1 = v1[i]->level;
-//       long int h2 = node->level;
-//
-//       if((h2-h1)<50) key=notfouts(v1[i]->outputs, node);
-//       else return 0;
-//     }
-//     if(key==0) return 0;
-//   }
-//   return key;
-// }
 
 void fanouts(Node* n1, set<string> &effect_nodes){
   long int n1_size = n1->outputs.size();
@@ -757,14 +1070,27 @@ int whichOutput(Node* n1, vector<string> &outputName, vector<string> outputs){
 void findEffectNodes(Circuit *spec_cir, string outName, set<string> &effect_nodes) {
   Node *outNode = spec_cir->all_nodes_map[outName];
   Node *cur_node = new Node;
-  if (outNode->inputs.size()!=0) {
-    for(int i=0; i<outNode->inputs.size(); i++) {
-      cur_node = outNode->inputs[i];
-      if (cur_node->inputs.size() == 2) {
-        effect_nodes.insert(cur_node->name);
-      }
-      findEffectNodes(spec_cir, cur_node->name, effect_nodes);
+  if (outNode->is_output) {
+    effect_nodes.insert(cur_node->name);
+  }
+  else {
+    for(int i=0; i<outNode->outputs.size(); i++) {
+      cur_node = outNode->outputs[i];
+      if (cur_node->is_output) effect_nodes.insert(cur_node->name);
+      else findEffectNodes(spec_cir, cur_node->name, effect_nodes);
+
     }
+  }
+}
+
+void findEffectNodes(Circuit *spec_cir, string outName, vector<string> &effects) {
+  effects.clear();
+  set<string> tmp;
+  findEffectNodes(spec_cir, outName, tmp);
+  set<string>::iterator it;
+
+  for (it=tmp.begin(); it!=tmp.end(); it++) {
+    effects.push_back(*it);
   }
 }
 
@@ -778,15 +1104,20 @@ void GetPossibleNodes(Circuit* new_spec_cir, string first_node_name, NodeVector 
     cur_node = spec_cir->all_nodes_map[first_node_name];
     tar_node.push_back(cur_node);
     spec_cir->Simplify(tar_node);
+    spec_cir->Simplify2();
     spec_cir->ResetLevels();
     spec_cir->LevelizeSortTopological(false);
+    spec_cir->SetIndexes();
+  } else {
+    spec_cir->Simplify();
+    spec_cir->Simplify2();
     spec_cir->SetIndexes();
   }
   switch (mode) {
     case 0:
       for (long i=0; i<spec_cir->all_nodes.size(); i++){
         c1 = spec_cir->all_nodes[i];
-        if(c1->inputs.size()==2 && !c1->is_input && !c1->is_output && c1->name!=first_node_name){
+        if(c1->inputs.size()==2 && !c1->is_input && c1->name!=first_node_name){
           second_nodes.push_back(c1);
         }
       }
@@ -795,11 +1126,11 @@ void GetPossibleNodes(Circuit* new_spec_cir, string first_node_name, NodeVector 
       for (long i=0; i<spec_cir->all_nodes.size(); i++){
         c1 = spec_cir->all_nodes[i];
         if(first_node_name==""){
-          if(c1->inputs.size()==2 && !c1->is_input && !c1->is_output && c1->name!=first_node_name){
+          if(c1->inputs.size()==2 && !c1->is_input){
             second_nodes.push_back(c1);
           }
         }
-        if(c1->name!=first_node_name) continue;
+        if(first_node_name!="" && c1->name!=first_node_name) continue;
         if(c1->name==first_node_name) first_node_name="";
       }
       break;
@@ -859,7 +1190,6 @@ void GetPossibleConnection(Circuit *spec_cir, string current_node_name, NodeVect
 void GetWrongCircuit(Circuit &new_spec_cir, string target_node_name, int type){
   Node* target_node = new_spec_cir.all_nodes_map[target_node_name];
   if (target_node->inputs.size() == 2) {
-
     Node* cur_node = new Node;
     switch(type){
       case 0:
@@ -995,6 +1325,20 @@ void GetWrongCircuit(Circuit *spec_cir, vector<Circuit*> &impl_cirs, string targ
   impl_cirs.resize(15);
 
   for (int jj = 0; jj < 16; jj++){
+    if (jj-1 == target_node->type) continue;
+    impl_cirs[cur_num] = spec_cir->GetDuplicate("","","");
+    GetWrongCircuit(*impl_cirs[cur_num], target_node_name, jj);
+    cur_num++;
+  }
+}
+
+void GetHeuristic(Circuit *spec_cir, vector<Circuit*> &impl_cirs, string target_node_name){
+  Node *target_node = spec_cir->all_nodes_map[target_node_name];
+  int cur_num = 0;
+  impl_cirs.clear();
+  impl_cirs.resize(6);
+
+  for (int jj = 0; jj < 6; jj++){
     if (jj-1 == target_node->type) continue;
     impl_cirs[cur_num] = spec_cir->GetDuplicate("","","");
     GetWrongCircuit(*impl_cirs[cur_num], target_node_name, jj);
@@ -1414,6 +1758,7 @@ void DoSimEqMod(Circuit &new_spec_cir, NodeVector target_nodes, string spec_file
     change_nodes.clear();
     change_nodes.push_back(target_node);
 
+
     spec_cir->Simplify(change_nodes);
     spec_cir->ResetLevels();
     spec_cir->LevelizeSortTopological(false);
@@ -1421,11 +1766,24 @@ void DoSimEqMod(Circuit &new_spec_cir, NodeVector target_nodes, string spec_file
 
     needtoadd = pow(2, (original_size - spec_cir->inputs.size()));
 
+    // spec_cir->WriteBlif("spec.blif");
+
     GetWrongCircuit(spec_cir, impl_cirs, target_node_name);
 
+
+    // for (int ii = 0; ii < thread_num; ii++) {
+    //   cout << target_node->name << "," << target_node->level << "," << target_node->type << "," << impl_cirs[ii]->all_nodes_map[target_node_name]->type << endl;
+    //   cout << impl_cirs[ii]->all_nodes.size() << endl;
+    // }
+
+
     for (int ii = 0; ii < thread_num; ii++){
+      // DoSimEq(*spec_cir, *impl_cirs[ii], po_diff_count[ii], total_diff_count[ii]);
+      // cout << total_diff_count[ii][7] << endl;
       sim_threads[ii] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[ii], &po_diff_count[ii], &total_diff_count[ii]);
     }
+
+
 
 
     for (int ii = 0; ii < thread_num; ii++) {
@@ -1440,6 +1798,7 @@ void DoSimEqMod(Circuit &new_spec_cir, NodeVector target_nodes, string spec_file
     delete spec_cir;
 
     for (int ii = 0; ii < thread_num; ii++) {
+      // impl_cirs[ii]->WriteBlif("spec"+to_string(ii)+".blif");
       delete impl_cirs[ii];
     }
   }
@@ -1488,14 +1847,15 @@ int DoSimEqMulGate(Circuit &new_spec_cir, string spec_filename, NodeVector first
 
   switch(mode) {
     case 0:{
-      for (int i=0; i<first_nodes.size(); i++){
+
+      for (int i=0; i<first_nodes.size()-2; i++){
 
         first_node_name = first_nodes[i]->name;
-        GetPossibleNodes(origin_cir, first_node_name, second_nodes, 1);
+        // GetPossibleNodes(origin_cir, first_node_name, second_nodes, 1);
 
-        for(int j=0; j<second_nodes.size(); j++){
+        for(int j=i+1; j<first_nodes.size()-1; j++){
 
-          second_node_name = second_nodes[j]->name;
+          second_node_name = first_nodes[j]->name;
 
           spec_cir = new_spec_cir.GetDuplicate("","","");
 
@@ -1514,13 +1874,18 @@ int DoSimEqMulGate(Circuit &new_spec_cir, string spec_filename, NodeVector first
           if (spec_cir->all_nodes_map.find(first_node_name) != spec_cir->all_nodes_map.end() && spec_cir->all_nodes_map.find(second_node_name) != spec_cir->all_nodes_map.end()){
 
             needtoadd = pow(2, new_spec_cir.inputs.size() - spec_cir->inputs.size());
-            max_error = ceil(pow(2, spec_cir->inputs.size()) * 0.02);
+            max_error = ceil(pow(2, spec_cir->inputs.size()) * 0.01);
 
             GetWrongCircuit(spec_cir, spec_cirs, first_node_name);
 
             for (int ii=0; ii < num_changes; ii++) {
               impl_cir = spec_cirs[ii]->GetDuplicate("","","");
+              if (spec_cir->all_nodes_map[first_node_name]->type==5 && impl_cir->all_nodes_map[first_node_name]->type>5) {
+                continue;
+              }
               GetWrongCircuit(impl_cir, impl_cirs, second_node_name);
+
+
               for (int jj=0; jj < num_changes; jj++) {
                 sim_threads[jj] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[jj], &po_diff_count[jj], &total_diff_count[jj]);
               }
@@ -1529,14 +1894,18 @@ int DoSimEqMulGate(Circuit &new_spec_cir, string spec_filename, NodeVector first
               }
 
               for (int t=0; t < num_changes; t++) {
+                if (spec_cir->all_nodes_map[second_node_name]->type ==5 && impl_cirs[t]->all_nodes_map[second_node_name]->type>5) continue;
                 cout << first_node_name << "," << first_node->type << "," << impl_cirs[t]->all_nodes_map[first_node_name]->type << "," << second_node_name << "," << second_node->type << "," << impl_cirs[t]->all_nodes_map[second_node_name]->type << "," << total_diff_count[t][7]*needtoadd << endl;
                 outFile << first_node_name << "," << first_node->type << "," << impl_cirs[t]->all_nodes_map[first_node_name]->type << "," << second_node_name << "," << second_node->type << "," << impl_cirs[t]->all_nodes_map[second_node_name]->type << "," << total_diff_count[t][7]*needtoadd << endl;
                 if(total_diff_count[t][7] < max_error && total_diff_count[t][7] > 0){
                   outMean << first_node_name << "," << first_node->type << "," << impl_cirs[t]->all_nodes_map[first_node_name]->type << "," << second_node_name << "," << second_node->type << "," << impl_cirs[t]->all_nodes_map[second_node_name]->type << "," << total_diff_count[t][7]*needtoadd << endl;
                 }
-                delete impl_cirs[i];
+                delete impl_cirs[t];
               }
               delete impl_cir;
+            }
+            for (int ii=0; ii<num_changes; ii++) {
+              delete spec_cirs[ii];
             }
           }
           delete spec_cir;
@@ -1903,7 +2272,6 @@ int DosimEqMulCon(Circuit &new_spec_cir, string spec_filename, NodeVector gate_n
 
   double needtoadd = 1;
   double max_error = 0;
-  int kk = 0;
   long int cn_size;
   long int thread_size;
 
@@ -2061,7 +2429,7 @@ int DoMixedChange(Circuit &new_spec_cir, string spec_filename, int amount, int m
 
   const int thread_num = 15;
 
-  amount = 10;
+  // amount = 10;
 
   // mode: 0, change type and connection on one node
   // mode: 1, change type and connection on two nodes
@@ -2184,7 +2552,6 @@ int DoMixedChange(Circuit &new_spec_cir, string spec_filename, int amount, int m
     string connection_node_name;
     string con_node_name;
 
-    Circuit *orcin = new_spec_cir.GetDuplicate("","","");
     GetPossibleNodes(spec_cir, "", gate_nodes, 0);
 
     double needtoadd =  1;
@@ -2195,6 +2562,7 @@ int DoMixedChange(Circuit &new_spec_cir, string spec_filename, int amount, int m
     for (int i = 0; i < node_size; i++){
       gate_node_name = gate_nodes[i]->name;
       cout << endl << gate_node_name << endl;
+
       for (int j = 0; j < node_size; j++){
 
         con_node_name = gate_nodes[j]->name;
@@ -2265,6 +2633,157 @@ int DoMixedChange(Circuit &new_spec_cir, string spec_filename, int amount, int m
   return 0;
 }
 
+int DoHueristic(Circuit &new_spec_cir, NodeVector target_nodes, int mode=1) {
+
+  ofstream outFile;
+  outFile.open("static.csv", ios::out | ios::app);
+
+
+  long int node_size = target_nodes.size();
+  const int nums_start = 2;
+  const int nums_end = 6;
+  const int nums = 8;
+  std::thread sim_threads[nums];
+  Circuit *spec_cir;
+  vector<Circuit*> impl_cirs;
+  string target_node_name;
+  vector<bit64> po_diff_count[nums];
+  vector<bit64> total_diff_count[nums];
+  NodeVector connections;
+  Node* cur_node;
+  long int con_size;
+  string con_name;
+  int real_thread;
+  int j = 0;
+  Circuit *c1 = new_spec_cir.GetDuplicate("","","");
+// GetPossibleConnection(Circuit *spec_cir, string current_node_name, NodeVector &connections
+  switch (mode) {
+    case 1: {
+      for (long int i=0; i < node_size; i++) {
+        target_node_name = target_nodes[i]->name;
+        c1 = new_spec_cir.GetDuplicate("","","");
+        connections.clear();
+        GetPossibleConnection(c1, target_node_name, connections);
+        con_size = connections.size();
+        for (long k=0; k<con_size-1; k+=2) {
+          if (k+1>=con_size) continue;
+          spec_cir = new_spec_cir.GetDuplicate("","","");
+          con_name = connections[k]->name;
+          impl_cirs.clear();
+          impl_cirs.resize(nums);
+          j = 0;
+          impl_cirs[j] = spec_cir->GetDuplicate("","","");
+          GetWrongCircuit(*impl_cirs[j], target_node_name, 2);
+          GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+          sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+          j = 1;
+          impl_cirs[j] = spec_cir->GetDuplicate("","","");
+          GetWrongCircuit(*impl_cirs[j], target_node_name, 4);
+          GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+          sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+          con_name = connections[k+1]->name;
+          j = 2;
+          impl_cirs[j] = spec_cir->GetDuplicate("","","");
+          GetWrongCircuit(*impl_cirs[j], target_node_name, 2);
+          GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+          sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+          j = 3;
+          impl_cirs[j] = spec_cir->GetDuplicate("","","");
+          GetWrongCircuit(*impl_cirs[j], target_node_name, 4);
+          GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+          sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+          real_thread = 4;
+          if (spec_cir->all_nodes_map[target_node_name]->type == NODE_NOR) {
+            real_thread = 8;
+            j = 4;
+            con_name = connections[k]->name;
+            impl_cirs[j] = spec_cir->GetDuplicate("","","");
+            GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+            GetWrongCircuit(*impl_cirs[j], target_node_name, 6);
+            sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+            j = 5;
+            impl_cirs[j] = spec_cir->GetDuplicate("","","");
+            GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 1);
+            GetWrongCircuit(*impl_cirs[j], target_node_name, 6);
+            sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+            j = 6;
+            con_name = connections[k+1]->name;
+            impl_cirs[j] = spec_cir->GetDuplicate("","","");
+            GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 0);
+            GetWrongCircuit(*impl_cirs[j], target_node_name, 6);
+            sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+            j = 7;
+            impl_cirs[j] = spec_cir->GetDuplicate("","","");
+            GetWrongConnect(*impl_cirs[j],target_node_name, con_name, 1);
+            GetWrongCircuit(*impl_cirs[j], target_node_name, 6);
+            sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+
+          }
+
+          for (j=0; j<real_thread; j++) {
+            sim_threads[j].join();
+          }
+
+          for (j=0; j<real_thread; j++) {
+           cout  << target_node_name << "," << impl_cirs[j]->all_nodes_map[target_node_name]->inputs[0]->name << "," << impl_cirs[j]->all_nodes_map[target_node_name]->type << ","<< total_diff_count[j][7] << endl;
+           outFile  << target_node_name << "," << impl_cirs[j]->all_nodes_map[target_node_name]->inputs[0]->name  << "," << impl_cirs[j]->all_nodes_map[target_node_name]->type << "," << total_diff_count[j][7] << endl;
+          }
+
+         cout << endl;
+
+         delete spec_cir;
+         for (j=0; j<real_thread; j++) {
+           delete impl_cirs[j];
+         }
+       }
+       delete c1;
+      }
+    }break;
+    case 2: {
+
+      for (long int i = 0; i < node_size; i++) {
+        real_thread = 6;
+        target_node_name = target_nodes[i]->name;
+        spec_cir = new_spec_cir.GetDuplicate("","","");
+        impl_cirs.clear();
+        impl_cirs.resize(real_thread);
+        for (int j=0; j<real_thread; j++) {
+          impl_cirs[j] = spec_cir->GetDuplicate("","","");
+          GetWrongCircuit(*impl_cirs[j], target_node_name, j);
+          sim_threads[j] = std::thread(DoSimEqTh4, spec_cir, impl_cirs[j], &po_diff_count[j], &total_diff_count[j]);
+        }
+        for (int j=0; j<real_thread; j++) {
+          sim_threads[j].join();
+        }
+        // outFile << target_node_name;
+        for (int j=0; j<real_thread; j++) {
+          cout  << target_node_name << "," << impl_cirs[j]->all_nodes_map[target_node_name]->type << "," << total_diff_count[j][7] << endl;
+          outFile  << target_node_name << "," << impl_cirs[j]->all_nodes_map[target_node_name]->type << "," << total_diff_count[j][7] << endl;
+        }
+        // outFile << endl;
+        // for (int j=0; j<nums; j++) {
+        //   for (int jj=1; jj<8; jj++) {
+        //     outFile << total_diff_count[j][jj] - total_diff_count[j][jj-1] << ",";
+        //   }
+        //   outFile << endl;
+        // }
+        cout << endl;
+        // outFile << endl;
+        delete spec_cir;
+        for (int j=0; j<real_thread; j++) {
+          delete impl_cirs[j];
+        }
+      }
+
+    }break;
+    default: break;
+  }
+
+
+  outFile.close();
+  return 0;
+}
+
 int DoSimEqLim(string spec_filename, int mode ,int amount, int submode=0){
   Circuit new_spec_cir;
   new_spec_cir.ReadBlif(spec_filename);
@@ -2309,10 +2828,17 @@ int DoSimEqLim(string spec_filename, int mode ,int amount, int submode=0){
       DoSimEqMulGate(new_spec_cir, spec_filename, first_nodes, 0);
       break;
     case 5:
-      DoMixedChange(new_spec_cir, spec_filename, amount, submode);
+      DoMixedChange(new_spec_cir, spec_filename, amount, 1);
       break;
     case 6:
       DosimEqMulCon(new_spec_cir, spec_filename, first_nodes, submode);
+      break;
+    case 7:
+      DoHueristic(new_spec_cir, first_nodes, 2);
+      break;
+    case 8:
+      DoHueristic(new_spec_cir, first_nodes, 1);
+      break;
     default:
       break;
   }
@@ -2565,6 +3091,182 @@ int DoSimEqModTwo(string spec_filename_1, string spec_filename_2, int mode, int 
   return 0;
 }
 
+void changeTypeToLoop(int &real, Node *tmp, Node *tmp2) {
+  if (real == 1 || real == 2) { real --;}
+  else {
+    if (real == 3) {
+      if (tmp->inputs[0]->name == tmp2->inputs[0]->name) {real = 2;}
+      else {real=3;}
+    }
+    else {
+      if (real == 4) {
+        if (tmp->inputs[0]->name == tmp2->inputs[0]->name) {real = 4;}
+        else { real=5; }
+      } else { real ++; }
+    }
+  }
+}
+
+void findPrimaryOutput(Circuit *spec_cir, map<string,int>&fin_len, map<string, set<string>> &effect_map) {
+  NodeVector outputs = spec_cir->outputs;
+  effect_map.clear();
+  fin_len.clear();
+  Node* node;
+
+  for (long i=0; i<outputs.size(); i++) {
+    node = outputs[i];
+    effect_map[node->name].insert(node->name);
+    for (int j=0; j<node->inputs.size(); j++) {
+      effect_map[node->inputs[j]->name].insert(node->name);
+      fin_len[node->inputs[j]->name] = effect_map[node->inputs[j]->name].size();
+    }
+  }
+
+  for (long i=spec_cir->all_nodes.size()-1; i>=0; i--) {
+    node = spec_cir->all_nodes[i];
+    for (int j=0; j<node->inputs.size(); j++) {
+      if (!node->inputs[j]->is_input) {
+        // fin_len[node->inputs[j]->name] = min(stoi(),fin_len[node->inputs[j]->name]);
+        effect_map[node->inputs[j]->name].insert(effect_map[node->name].begin(), effect_map[node->name].end());
+        fin_len[node->inputs[j]->name] = effect_map[node->inputs[j]->name].size();
+      }
+    }
+  }
+}
+
+void findPrimaryInput(Circuit *spec_cir, map<string,int>&fin_len) {
+  NodeVector inputs = spec_cir->inputs;
+  map<string, set<string>> effect_map;
+  fin_len.clear();
+  Node* node;
+
+  for (long i=0; i<inputs.size(); i++) {
+    node = inputs[i];
+    for (int j=0; j<node->outputs.size(); j++) {
+      effect_map[node->outputs[j]->name].insert(node->name);
+      fin_len[node->outputs[j]->name] = effect_map[node->outputs[j]->name].size();
+    }
+  }
+
+  for (long i=0; i<spec_cir->all_nodes.size(); i++) {
+    node = spec_cir->all_nodes[i];
+    for (int j=0; j<node->outputs.size(); j++) {
+      effect_map[node->outputs[j]->name].insert(effect_map[node->name].begin(), effect_map[node->name].end());
+      fin_len[node->outputs[j]->name] = effect_map[node->outputs[j]->name].size();
+    }
+  }
+}
+
+int TwoSimEq(string spec_filename, string impl_filename, int method) {
+  Circuit new_spec_cir, new_impl_cir;
+  new_spec_cir.ReadBlif(spec_filename);
+  new_impl_cir.ReadBlif(impl_filename);
+
+  switch (method) {
+    case 0: {
+      cout << ">>>>>>Random simulation on circuits!" << endl;
+      RndSimEq(new_spec_cir, new_impl_cir, 50000);
+    }
+    break;
+    case 1:
+    case 2: {
+      if (method==1) {
+        cout << ">>>>Random simulation on circuits! " << endl;
+        RndSimEq(new_spec_cir, new_impl_cir, 1000000);
+      }
+      if (method==2) WCAEcheck(new_spec_cir, new_impl_cir);
+
+      long int size1 = 0;
+      long int size2 = 0;
+      long int max_level1 = 0;
+      long int max_level2 = 0;
+      for (int i=0; i<new_spec_cir.all_nodes.size(); i++) {
+        if (new_spec_cir.all_nodes[i]->inputs.size()==2) size1++;
+	max_level1 = max(max_level1, new_spec_cir.all_nodes[i]->level);
+      }
+      new_impl_cir.Simplify();
+      // new_impl_cir.Simplify2();
+      new_impl_cir.SetIndexes();
+      for (int i=0; i<new_impl_cir.all_nodes.size(); i++) {
+        if (new_impl_cir.all_nodes[i]->inputs.size()==2) size2++;
+	      max_level2 = max(max_level2, new_impl_cir.all_nodes[i]->level);
+      }
+      cout << "Total Level: " << max_level1 << " Total level: " << max_level2 << endl;
+      cout << "original size: " << size1 << " current size: " << size2 << endl;
+    }
+    break;
+    default:
+    break;
+  }
+
+  return 0;
+}
+
+int returnPattern(NodeType nt, int which) {
+  int rt = -1;
+  switch(nt) {
+    case NODE_AND:
+    rt = 1;
+    break;
+    case NODE_NAND:
+    if (which == -1) rt = 0;
+    else rt = 1;
+    break;
+    case NODE_OR:
+    rt = 0;
+    break;
+    case NODE_NOR:
+    if (which == -1) rt = 1;
+    else rt = 0;
+    break;
+    case NODE_XOR:
+    rt = 1;
+    break;
+    case NODE_XNOR:
+    rt = 0;
+    break;
+    case NODE_AND2_PN:
+    if (which != 1) rt = 1;
+    else rt = 0;
+    //10 1 w=1 0, w=others, 1
+    break;
+    case NODE_AND2_NP:
+    if (which!=0) rt = 1;
+    else rt = 0;
+    // 01 1, whic
+    break;
+    case NODE_NAND2_PN:
+    if (which!=0) rt = 0;
+    else rt = 1;
+    // 10 0, which =
+    break;
+    case NODE_NAND2_NP:
+    if (which!=1) rt = 0;
+    else rt = 1;
+    break;
+    default:
+    break;
+  }
+  return rt;
+}
+
+int getSize(Circuit *spec_cir) {
+  int size1 = 0;
+  for (int i=0; i<spec_cir->all_nodes.size(); i++) {
+    if (spec_cir->all_nodes[i]->inputs.size()==2) size1++;
+  }
+  return size1;
+}
+
+int getLeastSigBit(set<string> fanout) {
+  int least = 1000000;
+  set<string>::iterator it;
+  for (it=fanout.begin(); it!=fanout.end(); it++) {
+    least = min(least, stoi((*it).substr(1, (*it).length())));
+  }
+  return least;
+}
+
 int TestSimEq(string spec_filename, int method) {
   Circuit new_spec_cir;
   string filename = spec_filename;
@@ -2578,10 +3280,10 @@ int TestSimEq(string spec_filename, int method) {
     return 0;
   }
 
-  if (new_spec_cir.inputs.size() > 64) { // TODO: do we need to limit the inputs (because of high runtime?)
-    MSG("Currently only simulating up to 64 inputs!");
-    return 0;
-  }
+  // if (new_spec_cir.inputs.size() > 64) { // TODO: do we need to limit the inputs (because of high runtime?)
+  //   MSG("Currently only simulating up to 64 inputs!");
+  //   return 0;
+  // }
 
   switch (method) {
     case 0: {
@@ -2612,42 +3314,26 @@ int TestSimEq(string spec_filename, int method) {
 
     }break;
     case 3: {
-      string nn = "n39";
+      string nn;
       Circuit *c1 = new_spec_cir.GetDuplicate("","","");
-      GetWrongCircuit(new_spec_cir, nn , 15);
-      cout << nn << "," << "new_spec_cir" << "," << new_spec_cir.all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "c1" << "," << c1->all_nodes_map[nn]->type << endl;
-      Circuit c2 = new_spec_cir;
-      cout << "===================" << endl;
-      GetWrongCircuit(c2, nn, 13);
-      cout << nn << "," << "c2" << "," << c2.all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "new_spec_cir" << "," << new_spec_cir.all_nodes_map[nn]->type << endl;
-      cout << "===================" << endl;
-      GetWrongCircuit(*c1, nn , 8);
-      cout << nn << "," << "new_spec_cir" << "," << new_spec_cir.all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "c1" << "," << c1->all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "c2" << "," << c2.all_nodes_map[nn]->type << endl;
-      cout << "===================" << endl;
-      GetWrongCircuit(new_spec_cir, nn , 4);
-      cout << nn << "," << "new_spec_cir" << "," << new_spec_cir.all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "c2" << "," << c2.all_nodes_map[nn]->type << endl;
-      cout << "===================" << endl;
-      Circuit* c3 = c1->GetDuplicate("", "", "");
-      GetWrongCircuit(*c3, nn, 9);
-      cout << nn << "," << "c1" << "," << c1->all_nodes_map[nn]->type << endl;
-      cout << nn << "," << "c3" << "," << c3->all_nodes_map[nn]->type << endl;
+      cout << "Please input the target node name " << endl;
+      cin >> nn;
+      cout << "Please input the type" << endl;
+      cout << "ZERO 0, ONE: 1, BUF0: 2, BUF1: 3, NOT0: 4, NOT1: 5" << endl;
+      int t;
+      cin >> t;
+      GetWrongCircuit(*c1, nn, t);
+      cout << "Target Node " << nn << " TYPE TO " << c1->all_nodes_map[nn]->type << endl;
+      DoSimEq(new_spec_cir, *c1);
     }break;
     case 1: {
-      const int num_changes = 15;
-      string node_name;
-      cin>>node_name;
-      Node* n1 = new_spec_cir.all_nodes_map[node_name];
-      NodeVector nv1;
-      nv1.push_back(n1);
-      vector<bit64> po_diff_count[num_changes];
-      vector<bit64> total_diff_count[num_changes];
-      DoSimEqMod(new_spec_cir, nv1, filename);
-      delete n1;
+      Circuit *c1 = new_spec_cir.GetDuplicate("","","");
+      c1->Simplify();
+      c1->Simplify2();
+      c1->SetIndexes();
+      c1->WriteBlif("see.blif");
+      delete c1;
+
     }break;
     case 2: {
       Circuit* spec_cir = new_spec_cir.GetDuplicate("", "", "");
@@ -2676,6 +3362,10 @@ int TestSimEq(string spec_filename, int method) {
         }
       }
       cout << endl;
+
+
+
+
     }break;
     case 4: {
       ifstream file(filename+"type2.csv");
@@ -2902,6 +3592,989 @@ int TestSimEq(string spec_filename, int method) {
         }
       }
     } break;
+    case 8: {
+      /*
+        try to change each ndoe to output
+      */
+      // Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      // long int node_size = spec_cir->all_nodes.size();
+      // NodeVector output_nodes = spec_cir->outputs;
+      // string output_name = output_nodes[output_nodes.size()-1]->name;
+      // Circuit *impl_cir;
+      // Node *cur_node = new Node;
+      // string cur_node_name = "";
+      // Node *impl_node = new Node;
+      // Node *tmp_node1 = new Node;
+      // Node *tmp_node2 = new Node;
+      //
+      // for (long int i = 0; i < node_size; i++) {
+      //   cur_node = spec_cir->all_nodes[i];
+      //   cur_node_name = cur_node->name;
+      //   if (cur_node->is_output or cur_node->is_input or cur_node_name == output_name) continue;
+      //   impl_cir = spec_cir->GetDuplicate("","","");
+      //   impl_node = impl_cir->all_nodes[i];
+      //   tmp_node1 = impl_cir->all_nodes[i]->inputs[0];
+      //   tmp_node2 = impl_cir->all_nodes[i]->inputs[1];
+      //   impl_cir->outputs[output_nodes.size()-1]->inputs[0] = tmp_node1;
+      //   impl_cir->outputs[output_nodes.size()-1]->inputs[1] = tmp_node2;
+      //   cout << "ORIGINAL INPUTS: " << spec_cir->all_nodes_map[output_name]->inputs[0]->name << " " << spec_cir->all_nodes_map[output_name]->inputs[1]->name << endl;
+      //   cout << "CURRENT INPUTS: " << impl_cir->all_nodes_map[output_name]->inputs[0]->name << " " << impl_cir->all_nodes_map[output_name]->inputs[1]->name << endl;
+      //   impl_cir->Simplify();
+      //   impl_cir->SetIndexes();
+      //   DoSimEq(*spec_cir, *impl_cir);
+      //   delete impl_cir;
+      // }
+    }break;
+    case 9: {
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      string node_name;
+      cin >> node_name;
+      Node *n1 = spec_cir->all_nodes_map[node_name];
+      NodeVector nv1;
+
+      nv1.clear();
+      nv1.push_back(n1);
+
+      spec_cir->Simplify(nv1);
+      spec_cir->SetIndexes();
+
+      cout << "After Simplified, circuit size: " << spec_cir->all_nodes.size() << endl;
+
+      spec_cir->WriteBlif("spec.blif");
+
+    }break;
+    case 10: {
+      cout << "This mode is to get specific nodes" << endl;
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector all_nodes;
+      GetPossibleNodes(spec_cir, "", all_nodes, 0);
+      std::set<string> effect_nodes;
+      std::vector<string> target_nodes;
+      std::vector<vector<string>> target_detail;
+      std::vector<string> tmp_detail;
+      int pIs = 0;
+      set<string>::iterator it;
+      for (int i=0; i<all_nodes.size(); i++) {
+        effect_nodes.clear();
+        findEffectNodes(spec_cir, all_nodes[i]->name, effect_nodes);
+        // cout << all_nodes[i]->name << "," << effect_nodes.size() << endl;
+        pIs = 0;
+        tmp_detail.clear();
+        for (it=effect_nodes.begin(); it!=effect_nodes.end(); it++) {
+          if (spec_cir->all_nodes_map[*it]->is_input) {
+            tmp_detail.push_back(*it);
+            pIs ++;
+          }
+        }
+        if (pIs>=9) {
+          target_detail.push_back(tmp_detail);
+          target_nodes.push_back(all_nodes[i]->name);
+        }
+      }
+      for (int i=0; i<target_nodes.size(); i++) {
+        cout << target_nodes[i] << "," << target_detail[i].size() << endl;
+        for (int j=0; j<target_detail[i].size(); j++) {
+          cout << target_detail[i][j] << "\t";
+        }
+        cout << endl;
+      }
+      cout << endl;
+    }break;
+    case 13: {
+
+      cout << "Exhaustively Picking up Gates " << endl;
+      ofstream outFile;
+
+      outFile.open(filename+".csv", ios::out);
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+
+      std::vector<Circuit*> impl_cirs;
+      NodeVector gates;
+      const int thread_num = 6;
+      std::thread sim_threads[thread_num];
+      vector<bit64> total_diff_count;
+      int real;
+      Node *tmp;
+      Node *tmp2;
+      string cur_node_name;
+      vector<double> WCAEs;
+      vector<double> MAEs;
+      std::vector<string> effect_nodes;
+      map<string, set<string>> effect_map;
+
+
+      map<string, int>po_counts;
+      map<string, int>pi_counts;
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+      findPrimaryInput(spec_cir, pi_counts);
+
+      GetPossibleNodes(spec_cir, "", gates, 0);
+
+
+      for (int i=0; i<gates.size(); i++) {
+        cur_node_name = gates[i]->name;
+        spec_cir = new_spec_cir.GetDuplicate("","","");
+        GetWrongCircuit(spec_cir, impl_cirs, cur_node_name);
+        WCAEs.clear();
+        WCAEs.resize(thread_num);
+
+        MAEs.clear();
+        MAEs.resize(thread_num);
+
+        total_diff_count.clear();
+        total_diff_count.resize(thread_num);
+
+        effect_nodes.clear();
+        findEffectNodes(spec_cir, cur_node_name, effect_nodes);
+
+
+        for (int k=0; k<thread_num; k++) {
+          sim_threads[k] = std::thread(DoSimEqTh2, spec_cir, impl_cirs[k], &WCAEs[k], &MAEs[k], &total_diff_count[k]);
+        }
+
+        for (int k=0; k<thread_num; k++) {
+          sim_threads[k].join();
+        }
+
+        int flag = 0;
+        for (int k=0; k<thread_num; k++) {
+          real = impl_cirs[k]->all_nodes_map[cur_node_name]->type;
+          changeTypeToLoop(real, spec_cir->all_nodes_map[cur_node_name], impl_cirs[k]->all_nodes_map[cur_node_name]);
+          outFile <<cur_node_name << "," << real << "," <<spec_cir->all_nodes_map[cur_node_name]->type << "," << spec_cir->all_nodes_map[cur_node_name]->level<< "," << total_diff_count[k] << "," << WCAEs[k] << "," << MAEs[k] << "," << getLeastSigBit(effect_map[cur_node_name]) << "," << pi_counts[cur_node_name];
+          // for (int m = 0; m < effect_nodes.size(); m++) {
+          //   outFile << "," << effect_nodes[m];
+          // }
+          outFile << endl;
+          delete impl_cirs[k];
+        }
+
+        delete spec_cir;
+      }
+    }
+    break;
+    case 14: {
+      ofstream outFile;
+
+      outFile.open(filename+"_2G.csv", ios::out);
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+
+      std::vector<Circuit*> impl_cirs;
+      std::vector<Circuit*> real_cirs;
+      NodeVector gates;
+      const int thread_num = 6;
+      std::thread sim_threads[thread_num];
+      vector<bit64> po_diff_count[thread_num];
+      vector<bit64> total_diff_count[thread_num];
+      int real;
+      int real2;
+      Node *tmp;
+      Node *tmp2;
+      string cur_node_name;
+      vector<double> WCAEs;
+      vector<double> MAEs;
+      Circuit *impl_cir;
+      NodeVector second_nodes;
+      Circuit* real_cir;
+      string second_node_name;
+      vector<bit64> total_diff;
+
+
+      GetPossibleNodes(spec_cir, "", gates, 0);
+
+
+      for (int i=0; i<gates.size(); i++) {
+        cur_node_name = gates[i]->name;
+        spec_cir = new_spec_cir.GetDuplicate("","","");
+        GetWrongCircuit(spec_cir, impl_cirs, cur_node_name);
+
+        for (int j=0; j<thread_num; j++) {
+          impl_cir = impl_cirs[j];
+          real = impl_cir->all_nodes_map[cur_node_name]->type;
+          changeTypeToLoop(real, spec_cir->all_nodes_map[cur_node_name], impl_cir->all_nodes_map[cur_node_name]);
+
+          GetPossibleNodes(impl_cir, cur_node_name, second_nodes, 1);
+
+          for (int m=0; m < gates.size(); m++) {
+            if ( gates[m]->name == cur_node_name) continue;
+            real_cir = impl_cir->GetDuplicate("","","");
+            second_node_name = gates[m]->name;
+            GetWrongCircuit(real_cir, real_cirs, gates[m]->name);
+            WCAEs.clear();
+            WCAEs.resize(thread_num);
+
+            MAEs.clear();
+            MAEs.resize(thread_num);
+
+            total_diff.clear();
+            total_diff.resize(thread_num);
+
+
+            for (int k=0; k<thread_num; k++) {
+              sim_threads[k] = std::thread(DoSimEqTh2, spec_cir, real_cirs[k], &WCAEs[k], &MAEs[k], &total_diff[k]);
+            }
+
+            for (int k=0; k<thread_num; k++) {
+              sim_threads[k].join();
+            }
+
+            for (int k=0; k<thread_num; k++) {
+
+              real2 = real_cirs[k]->all_nodes_map[second_node_name]->type;
+              changeTypeToLoop(real2, spec_cir->all_nodes_map[second_node_name], real_cirs[k]->all_nodes_map[second_node_name]);
+              cout <<cur_node_name << "," << real << "," << second_node_name<< "," << real2 << "," << total_diff[k] << "," << WCAEs[k] << "," << MAEs[k] << endl;
+
+              outFile <<cur_node_name << "," << real << "," << second_node_name<< "," << real2 << "," << total_diff[k] << "," << WCAEs[k] << "," << MAEs[k] << endl;
+              delete real_cirs[k];
+            }
+            delete real_cir;
+
+          }
+          delete impl_cirs[j];
+
+        }
+
+        delete spec_cir;
+      }
+    }
+    break;
+    case 15: {
+      ofstream outFile;
+
+      outFile.open(filename+"_1G.csv", ios::out);
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      Circuit *correct_cir = new_spec_cir.GetDuplicate("","","");
+
+      std::vector<Circuit*> impl_cirs;
+      NodeVector gates;
+      const int thread_num = 6;
+      std::thread sim_threads[thread_num];
+      vector<bit64> total_diff_count;
+      int real;
+      Node *tmp;
+      Node *tmp2;
+      string cur_node_name;
+      vector<double> WCAEs;
+      vector<double> MAEs;
+      Circuit *tmp_cir = new_spec_cir.GetDuplicate("","","");
+
+      cout << "Please input the node and the type" << endl;
+      string n1, n2;
+      int t1,t2;
+
+      cin>>n1;
+      cin>>t1;
+      cin>>n2;
+      cin>>t2;
+
+      GetWrongCircuit(*tmp_cir, n1, t1);
+      GetWrongCircuit(*tmp_cir, n2, t2);
+
+      tmp_cir->Simplify();
+      tmp_cir->Simplify2();
+      tmp_cir->SetIndexes();
+
+      GetPossibleNodes(tmp_cir, "", gates, 0);
+
+
+      for (int i=0; i< gates.size(); i++) {
+        cur_node_name = gates[i]->name;
+        spec_cir = tmp_cir->GetDuplicate("","","");
+        if (spec_cir->all_nodes_map[cur_node_name]->inputs.size() != 2) continue;
+        GetWrongCircuit(spec_cir, impl_cirs, cur_node_name);
+        WCAEs.clear();
+        WCAEs.resize(thread_num);
+
+        MAEs.clear();
+        MAEs.resize(thread_num);
+
+        total_diff_count.clear();
+        total_diff_count.resize(thread_num);
+
+        for (int k=0; k<thread_num; k++) {
+          sim_threads[k] = std::thread(DoSimEqTh2, correct_cir, impl_cirs[k], &WCAEs[k], &MAEs[k], &total_diff_count[k]);
+        }
+
+        for (int k=0; k<thread_num; k++) {
+          sim_threads[k].join();
+        }
+
+        for (int k=0; k<thread_num; k++) {
+          real = impl_cirs[k]->all_nodes_map[cur_node_name]->type;
+          changeTypeToLoop(real, spec_cir->all_nodes_map[cur_node_name], impl_cirs[k]->all_nodes_map[cur_node_name]);
+          outFile <<cur_node_name << "," << real << "," << total_diff_count[k] << "," << WCAEs[k] << "," << MAEs[k] << endl;
+          delete impl_cirs[k];
+        }
+
+        delete spec_cir;
+      }
+      delete tmp_cir;
+      delete correct_cir;
+    }
+    break;
+    case 16: {
+      ofstream out;
+      out.open(filename+"_unit.csv", ios::out);
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector gates;
+      GetPossibleNodes(spec_cir, "", gates, 0);
+      map<string, int>po_counts;
+      map<string, set<string>> effect_map;
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+
+      // write preliminary circuit analysis
+      for (long int i=0; i<gates.size(); i++) {
+        double err_em;
+        if (gates[i]->is_output) err_em = 0;
+        else err_em = 1 / pow(2,po_counts[gates[i]->name]);
+        out << gates[i]->name << "," << gates[i]->level << ","<< po_counts[gates[i]->name]<< "," << err_em << endl;
+      }
+
+      out.close();
+    }
+    break;
+    case 17: {
+      // cout << "Approximate Circuits for simple pattern" << endl;
+      double target_err = 0.01 * 0.01;
+      cout << "Please input target error rate " << endl;
+      cin >> target_err;
+
+      auto start_time = chrono::system_clock::now();
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector gates;
+      GetPossibleNodes(spec_cir, "", gates, 0);
+      map<string, int>po_counts;
+      map<string, double>pre_wcae;
+      map<string, set<string>> effect_map;
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+      vector<vector<string>> std_wcae;
+
+      std_wcae.resize(spec_cir->outputs.size()+1);
+
+
+
+      for (long int i=0; i<gates.size(); i++) {
+        double err_em;
+        if (gates[i]->is_output) {
+          err_em = 1 / pow(2, spec_cir->outputs.size() - stoi(gates[i]->name.substr(1,gates[i]->name.length())));
+          std_wcae[spec_cir->outputs.size()-stoi(gates[i]->name.substr(1,gates[i]->name.length()))-1].push_back(gates[i]->name);
+        }
+        else {
+          if (po_counts[gates[i]->name] == 1) {
+            string po_name = *effect_map[gates[i]->name].begin();
+            err_em = 1 /  pow(2, spec_cir->outputs.size() - stoi(po_name.substr(1,po_name.length())));
+            std_wcae[spec_cir->outputs.size()-stoi(po_name.substr(1,po_name.length()))-1].push_back(gates[i]->name);
+          } else {
+            err_em = 1 / pow(2,po_counts[gates[i]->name]);
+            std_wcae[po_counts[gates[i]->name]].push_back(gates[i]->name);
+          }
+        }
+        pre_wcae[gates[i]->name] = err_em;
+      }
+
+
+
+      Circuit* answer2 = spec_cir->GetDuplicate("","","");
+      Circuit *answer = spec_cir->GetDuplicate("","","");
+      vector<double> answers_err;
+      vector<string> answer_nodes;
+
+      double cur_err = 0;
+
+
+
+
+      long int origin_size = 0;
+      NodeVector base;
+
+      cout << "TAGRET ERROR RATE: " << target_err << endl;
+
+      gates.clear();
+
+      for (int i=0; i<spec_cir->all_nodes.size(); i++) {
+        if (spec_cir->all_nodes[i]->inputs.size()==2) {
+          origin_size++;
+          if (pre_wcae[spec_cir->all_nodes[i]->name] < target_err) {
+            gates.push_back(spec_cir->all_nodes[i]);
+          }
+        }
+      }
+
+      vector<string> cur_std_wcae;
+      Node* cur_node;
+      int flag = 0;
+      double ans2_err = 0;
+
+
+      for (int i = std_wcae.size() - 1; i >=0; i--) {
+        if (flag == 1) break;
+        cur_std_wcae.clear();
+        cur_std_wcae = std_wcae[i];
+
+        for (int j = 0; j < cur_std_wcae.size(); j++) {
+          if (answer->all_nodes_map.find(cur_std_wcae[j]) == answer->all_nodes_map.end()) continue;
+          cur_node = answer->all_nodes_map[cur_std_wcae[j]];
+          if (cur_node->inputs.size() !=2 ) continue;
+          cur_err += pre_wcae[cur_node->name];
+          ans2_err += pre_wcae[cur_node->name];
+          // cout << cur_err << endl;
+
+          if ( cur_err >= target_err) {
+            GetWrongCircuit(*answer2, cur_node->name, 0);
+            cur_err -= pre_wcae[cur_node->name];
+            flag = 1;
+            break;
+          }
+          int s1,s2;
+          Circuit *tmp_cir = answer->GetDuplicate("","","");
+          GetWrongCircuit(*tmp_cir, cur_node->name, 0);
+          tmp_cir->Simplify();
+          tmp_cir->SetIndexes();
+          s1 = getSize(tmp_cir);
+          delete tmp_cir;
+          tmp_cir = answer->GetDuplicate("","","");
+          GetWrongCircuit(*tmp_cir, cur_node->name, 1);
+          tmp_cir->Simplify();
+          tmp_cir->SetIndexes();
+          s2 = getSize(tmp_cir);
+          delete tmp_cir;
+          if (s1 <= s2) {
+            if (cur_node->type == NODE_XOR) cur_err -= pre_wcae[cur_node->name];
+            GetWrongCircuit(*answer, cur_node->name, 0);
+            GetWrongCircuit(*answer2, cur_node->name, 0);
+          } else {
+            GetWrongCircuit(*answer, cur_node->name, 1);
+            GetWrongCircuit(*answer2, cur_node->name, 1);
+          }
+          // cout << cur_node->name << endl;
+          answer->Simplify();
+          answer->SetIndexes();
+          answer2->Simplify();
+          answer2->SetIndexes();
+          // double WCAE,MAE;
+          // bit64 total_diff_count;
+          // DoSimEq(*spec_cir, *answer, WCAE, MAE, total_diff_count);
+          // cout << cur_node->name << "," << WCAE << "," << cur_err << endl;
+        }
+      }
+
+      cout << "Estimation is: " << cur_err<< endl;
+
+      auto end_time = chrono::system_clock::now();
+      chrono::duration<double> diff_time = end_time - start_time;
+      cout << endl << "Generation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+
+
+      if (spec_cir->inputs.size() > 30) RndSimEq(*spec_cir, *answer, 50048);
+      else WCAEcheck(*spec_cir, *answer);
+
+      // WCAEcheck(*spec_cir, *answer);
+      // WCAEcheck(*spec_cir, *answer2);
+      answer->WriteBlif(filename+"ap.blif");
+
+    }
+    break;
+    case 18: {
+      auto start_time = chrono::system_clock::now();
+      int flag = 0;
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector gates;
+      GetPossibleNodes(spec_cir, "", gates, 0);
+      map<string, int>po_counts;
+      map<string, int>pi_counts;
+      map<string, double>pre_wcae;
+      map<string, set<string>> effect_map;
+
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+      findPrimaryInput(spec_cir, pi_counts);
+
+
+      vector<Circuit*> answers;
+      Circuit *answer = spec_cir->GetDuplicate("","","");
+
+
+      double cur_err = 0;
+      double target_err = 0.1 * 0.01;
+
+      long int origin_size = 0;
+      NodeVector start_nodes;
+      vector<NodeVector> start_vector;
+      NodeVector start_nodes2;
+
+      cout << "TAGRET ERROR RATE: " << target_err/10 << endl;
+
+      target_err *= 5;
+
+
+      for (int i=0; i<spec_cir->all_nodes.size(); i++) {
+        if (spec_cir->all_nodes[i]->inputs.size()==2) {
+          origin_size++;
+          Node* cur_node = spec_cir->all_nodes[i];
+          if (cur_node->inputs[0]->is_input && cur_node->inputs[1]->is_input) {
+            if ( cur_node->inputs[0]->name.substr(0,1) != cur_node->inputs[1]->name.substr(0,1)) {
+              // cout<< cur_node->inputs[0]->name.substr(0)<< "," << cur_node->inputs[1]->name.substr(0) << "," << cur_node->name <<endl;
+              if (stoi(cur_node->inputs[1]->name.substr(1)) == (spec_cir->inputs.size()/2-1) ) continue;
+              start_nodes.push_back(cur_node);
+            }
+          }
+          for (int j=0; j<spec_cir->inputs.size()/2; j++) {
+            string h = "a" + to_string(j);
+            if (cur_node->inputs[0]->is_input && cur_node->inputs[0]->name.substr(0)==h && !cur_node->inputs[1]->is_input ) {
+              start_nodes2.push_back(cur_node);
+            }
+          }
+        }
+      }
+
+      double cur_max = 0;
+
+      int count = 0;
+      int last_target = -1;
+      Node* cur_node;
+      NodeVector last_nodes;
+      double last_max = 0;
+      double this_err;
+
+      int ct;
+
+
+
+      // while (cur_err<target_err) {
+      start_nodes2.clear();
+      for (int i = 0; i < start_nodes.size(); i++) {
+        cur_node = start_nodes[i];
+        ct = -1;
+        if (cur_node->is_output) {
+          this_err = 1 / pow(2, spec_cir->outputs.size() - stoi(cur_node->name.substr(1)));
+          ct = 0;
+        }
+        else {
+          if (cur_node->type == NODE_AND) {
+            if (po_counts[cur_node->name] == 1) {
+              this_err = 1 / pow(2, spec_cir->outputs.size() - stoi(cur_node->outputs[0]->name.substr(1)));
+            } else this_err = 1 / pow(2, po_counts[cur_node->name]);
+            ct = 0;
+          }
+        }
+        if (ct!=-1) {
+          cur_err += this_err;
+          cout <<  cur_node->name << "," << ct << "," << cur_err << endl;
+          GetWrongCircuit(*answer, cur_node->name, ct);
+          pre_wcae[cur_node->name] = this_err;
+          for (int j=0; j<cur_node->outputs.size(); j++) {
+            start_nodes2.push_back(cur_node->outputs[j]);
+          }
+
+        }
+      }
+
+
+      for (int i = 0; i < start_nodes2.size(); i++) {
+        cur_node = start_nodes2[i];
+        ct = -1;
+        if (cur_node->is_output) {
+          this_err = 1 / pow(2, spec_cir->outputs.size() - stoi(cur_node->name.substr(1)));
+          ct = 0;
+        }
+        else {
+          this_err = 1 / pow(2, po_counts[cur_node->name]);
+          ct = 1;
+        }
+        if (ct!=-1 && cur_node->type==NODE_NOR) {
+          if (cur_node->inputs[1]->outputs.size() >= 2) continue;
+          cur_err += this_err;
+          cur_err -= pre_wcae[cur_node->inputs[0]->name];
+          cout <<  cur_node->name << "," << ct << "," << cur_err << endl;
+          GetWrongCircuit(*answer, cur_node->name, ct);
+        }
+      }
+      //
+      //
+      // for (int i = 0; i < start_nodes3.size(); i++) {
+      //   cur_node = start_nodes3[i];
+      //   ct = -1;
+      //   if (cur_node->is_output) {
+      //     this_err = 1 / pow(2, spec_cir->outputs.size() - stoi(cur_node->name.substr(1)));
+      //     ct = 0;
+      //   }
+      //   else {
+      //     this_err = 1 / pow(2, po_counts[cur_node->name]);
+      //     ct = 2;
+      //   }
+      //   if (ct!=-1) {
+      //     cur_err += this_err;
+      //     cout <<  cur_node->name << "," << ct << "," << cur_err << endl;
+      //     GetWrongCircuit(*answer, cur_node->name, ct);
+      //   }
+      // }
+      //
+      //
+      //
+      // for (int i = 0; i < start_nodes4.size(); i++) {
+      //   cur_node = start_nodes4[i];
+      //   ct = -1;
+      //   if (cur_node->is_output) {
+      //     this_err = 1 / pow(2, spec_cir->outputs.size() - stoi(cur_node->name.substr(1)));
+      //     ct = 0;
+      //   }
+      //   else {
+      //     this_err = 1 / pow(2, po_counts[cur_node->name]);
+      //     ct = 2;
+      //   }
+      //   if (ct!=-1) {
+      //     cur_err += this_err;
+      //     cout <<  cur_node->name << "," << ct << "," << cur_err << endl;
+      //     GetWrongCircuit(*answer, cur_node->name, ct);
+      //   }
+      // }
+      //
+
+
+
+
+      cout << "ESTIMATION ERROR RATE: " << cur_err << endl;
+
+      auto end_time = chrono::system_clock::now();
+      chrono::duration<double> diff_time = end_time - start_time;
+      cout << endl << "Generation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+
+      answer->WriteBlif("kaka.blif");
+      if (spec_cir->inputs.size() > 30) {
+        for (int i=0; i<10; i++) {
+          Circuit *iii = answer->GetDuplicate("","","");
+          RndSimEq(*spec_cir, *iii, 100000);
+          delete iii;
+        }
+      }
+      else  WCAEcheck(*spec_cir, *answer);
+
+
+    }
+    break;
+    case 19: {
+      auto start_time = chrono::system_clock::now();
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector gates;
+      GetPossibleNodes(spec_cir, "", gates, 0);
+      map<string, int>po_counts;
+      map<string, int>pi_counts;
+      map<string, double>pre_wcae;
+      map<string, set<string>> effect_map;
+
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+      findPrimaryInput(spec_cir, pi_counts);
+
+
+      vector<Circuit*> answers;
+      Circuit *answer = spec_cir->GetDuplicate("","","");
+
+
+      double cur_err = 0;
+      double target_err = 1 * 0.01;
+
+      long int origin_size = 0;
+      NodeVector start_nodes;
+
+      cout << "Please input target error rate " << endl;
+      cin >> target_err;
+
+
+      cout << "TAGRET ERROR RATE: " << target_err << endl;
+
+      target_err *= 1;
+
+      for (int i=0; i<spec_cir->all_nodes.size(); i++) {
+        if (spec_cir->all_nodes[i]->inputs.size()==2) {
+          origin_size++;
+          Node* cur_node = spec_cir->all_nodes[i];
+          if (cur_node->inputs[0]->is_input && cur_node->inputs[1]->is_input) {
+            start_nodes.push_back(cur_node);
+          }
+        }
+      }
+
+      double cur_max = 0;
+
+      int last_target = -1;
+      Node* cur_node;
+      NodeVector last_nodes;
+      int k = 0;
+      double real_min;
+
+      while (cur_err<target_err && start_nodes.size()) {
+        last_nodes.clear();
+        // cout << cur_err << "," << cur_max << ","<< target_err << "," << start_nodes.size() << endl;
+        cur_max = 1;
+        real_min = 0;
+        for (int i=0; i<start_nodes.size(); i++) {
+
+          real_min = 1;
+          int types = -1;
+          cur_node = start_nodes[i];
+
+          if (answer->all_nodes_map[cur_node->name]->inputs.size()!=2) continue;
+          NodeType cur_type = cur_node->type;
+          double this_err;
+          if (cur_node->is_output) {
+            this_err = 1 / pow(2, spec_cir->outputs.size() - (double)stoi(cur_node->name.substr(1,cur_node->name.size())) );
+          } else this_err = 1 / pow(2, po_counts[cur_node->name]);
+          // cout << cur_node->name << "," << this_err<<endl;
+          cur_max = min(this_err, cur_max);
+          real_min = min(this_err, real_min);
+          if (this_err > target_err/10) continue;
+
+          if (this_err < target_err) {
+            pre_wcae[cur_node->name] = this_err;
+            cur_err += this_err;
+            if (pre_wcae.find(cur_node->inputs[0]->name) != pre_wcae.end()) cur_err -= pre_wcae[cur_node->inputs[0]->name];
+            else cur_err -= pre_wcae[cur_node->inputs[1]->name];
+            // if (pre_wcae.find(cur_node->inputs[1]->name) != pre_wcae.end())
+
+            if (cur_node->inputs[0]->is_input && cur_node->inputs[1]->is_input) {
+              if (cur_type != NODE_AND) continue;
+              else types = 0;
+            } else {
+              if ( (cur_node->inputs[0]->is_input || cur_node->inputs[1]->is_input) && (cur_type == NODE_AND)) {
+                types = 0;
+              } else {
+                // if (answer->all_nodes_map[cur_node->inputs[0]->name]->inputs.size() == 2 && answer->all_nodes_map[cur_node->inputs[1]->name]->inputs.size() == 2 ) continue;
+                if (cur_type == NODE_XNOR || cur_type == NODE_XOR) { types = 0; }
+                else {
+                  if (returnPattern(cur_type, 0) == answer->all_nodes_map[cur_node->inputs[0]->name]->type - 1
+                  || returnPattern(cur_type, 1) == answer->all_nodes_map[cur_node->inputs[1]->name]->type - 1 ) {
+                  types = returnPattern(cur_type, -1);
+                  } else {
+                    types = 1 - returnPattern(cur_type, -1);
+                  }
+                }
+              }
+            }
+
+            for (int j=0; j<cur_node->outputs.size(); j++) {
+              last_nodes.push_back(cur_node->outputs[j]);
+            }
+            cout << cur_node->name << "," << types << ","<< cur_err << endl;
+            GetWrongCircuit(*answer, cur_node->name, types);
+          }
+        }
+        start_nodes.clear();
+        start_nodes = last_nodes;
+      }
+
+
+
+      cout << "ESTIMATION ERROR RATE: " << cur_err << endl;
+
+      auto end_time = chrono::system_clock::now();
+      chrono::duration<double> diff_time = end_time - start_time;
+      cout << endl << "Generation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+
+
+      if (spec_cir->inputs.size() > 30) RndSimEq(*spec_cir, *answer, 50048);
+      else WCAEcheck(*spec_cir, *answer);
+
+      answer->WriteBlif(filename+"ap.blif");
+    }
+    break;
+    case 20: {
+      auto start_time = chrono::system_clock::now();
+
+      Circuit *spec_cir = new_spec_cir.GetDuplicate("","","");
+      NodeVector gates;
+      GetPossibleNodes(spec_cir, "", gates, 0);
+      map<string, int>po_counts;
+      map<string, int>pi_counts;
+      map<string, set<string>> effect_map;
+
+      findPrimaryOutput(spec_cir, po_counts, effect_map);
+      findPrimaryInput(spec_cir, pi_counts);
+
+
+      vector<Circuit*> answers;
+      Circuit *answer = spec_cir->GetDuplicate("","","");
+
+
+      double cur_err = 0;
+      double target_err = 0.1 * 0.01;
+
+      long int origin_size = 0;
+      NodeVector start_nodes;
+
+      cout << "TAGRET ERROR RATE: " << target_err << endl;
+
+      target_err *= 100;
+
+      for (int i=0; i<spec_cir->all_nodes.size(); i++) {
+        if (spec_cir->all_nodes[i]->inputs.size()==2) {
+          origin_size++;
+          Node* cur_node = spec_cir->all_nodes[i];
+          if (cur_node->inputs[0]->is_input && cur_node->inputs[1]->is_input) {
+            start_nodes.push_back(cur_node);
+          }
+        }
+      }
+
+      double cur_max = 0;
+
+      int last_target = -1;
+      Node* cur_node;
+      NodeVector last_nodes;
+      int k = 0;
+      double real_min;
+
+      while (cur_err<target_err && start_nodes.size()) {
+        last_nodes.clear();
+        // cout << cur_err << "," << cur_max << ","<< target_err << "," << start_nodes.size() << endl;
+        cur_max = 1;
+        real_min = 0;
+        for (int i=0; i<start_nodes.size(); i++) {
+
+          real_min = 1;
+          int types = -1;
+          cur_node = start_nodes[i];
+
+          if (answer->all_nodes_map[cur_node->name]->inputs.size()!=2) continue;
+          NodeType cur_type = cur_node->type;
+          double this_err;
+          if (cur_node->is_output) {
+            this_err = 1 / pow(2, spec_cir->outputs.size() - (double)stoi(cur_node->name.substr(1,cur_node->name.size())) );
+          } else this_err = 1 / pow(2, po_counts[cur_node->name]);
+          // cout << cur_node->name << "," << this_err<<endl;
+          cur_max = min(this_err, cur_max);
+          real_min = min(this_err, real_min);
+          if (this_err > target_err/100) continue;
+
+          if (this_err + cur_err < target_err) {
+            cur_err += this_err;
+            if (cur_node->inputs[0]->is_input && cur_node->inputs[1]->is_input) {
+              if (cur_type != NODE_AND) continue;
+              else types = 0;
+            } else {
+              if ( (cur_node->inputs[0]->is_input || cur_node->inputs[1]->is_input) && (cur_type == NODE_AND)) {
+                types = 0;
+              } else {
+                // if (answer->all_nodes_map[cur_node->inputs[0]->name]->inputs.size() == 2 && answer->all_nodes_map[cur_node->inputs[1]->name]->inputs.size() == 2 ) continue;
+                if (cur_type == NODE_XNOR || cur_type == NODE_XOR) { types = 0; }
+                else {
+                  if (returnPattern(cur_type, 0) == answer->all_nodes_map[cur_node->inputs[0]->name]->type - 1
+                  || returnPattern(cur_type, 1) == answer->all_nodes_map[cur_node->inputs[1]->name]->type - 1 ) {
+                  types = returnPattern(cur_type, -1);
+                  } else {
+                    types = 1 - returnPattern(cur_type, -1);
+                  }
+                }
+              }
+            }
+
+            for (int j=0; j<cur_node->outputs.size(); j++) {
+              last_nodes.push_back(cur_node->outputs[j]);
+            }
+            // cout << cur_node->name << "," << types << ","<< cur_err << endl;
+            GetWrongCircuit(*answer, cur_node->name, types);
+          }
+        }
+        cout << cur_err << "," << cur_max << ","<< target_err << "," << start_nodes.size() << endl;
+
+        start_nodes.clear();
+        start_nodes = last_nodes;
+      }
+
+
+
+      cout << "ESTIMATION ERROR RATE: " << cur_err << endl;
+
+      auto end_time = chrono::system_clock::now();
+      chrono::duration<double> diff_time = end_time - start_time;
+      cout << endl << "Generation time is: " << setprecision(3) << diff_time.count() << " s" << endl;
+
+
+      // if (spec_cir->inputs.size() > 30) RndSimEq(*spec_cir, *answer, 50048);
+      // else
+      WCAEcheck(*spec_cir, *answer);
+
+
+    }
+    break;
   }
+  return 0;
+}
+
+// NEURAL NETWORK PART
+template<class T>
+int readCSV(string filename,  vector<vector<T>> &inputs) {
+
+  inputs.clear();
+
+  ifstream file(filename);
+  string line;
+  vector<string> lines;
+  vector<T> single_input;
+
+  while (file.good()) {
+    getline(file, line);
+    if (line.length()>0) {
+      lines.clear();
+      lines = split(line, ',');
+      single_input.clear();
+      single_input.resize(lines.size(), 0);
+      for (long int i=0; i<lines.size(); i++) {
+        single_input[i] = stoi(line) / 255;
+
+      }
+      inputs.push_back(single_input);
+    }
+  }
+  return 0;
+}
+
+int readCSV(string filename, vector<int> &labels) {
+
+  labels.clear();
+
+  ifstream file(filename);
+  string line;
+  int label;
+
+  while (file.good()) {
+    getline(file, line);
+    if (line.length() == 1) {
+      label = stoi(line);
+      labels.push_back(label);
+    }
+  }
+  return 0;
+}
+
+void formatConsole() {
+  for (int i=0; i<30; i++) {
+    cout << "=";
+  }
+  cout << endl;
+}
+
+
+int SetUpNN(string dataset_filename, string label_filename) {
+  vector<vector<float>> inputs;
+  vector<int> labels;
+  readCSV(dataset_filename, inputs);
+  readCSV(label_filename, labels);
+  formatConsole();
+  cout << "\t" <<"MODEL DETAIL" << "\t" << endl;
+  cout << "TrainSet Size:\t" << inputs.size() << endl;
+  cout << "Feature Size: \t" << inputs[0].size() << endl;
+  cout << "Number of label: " << labels.size() << endl;
+  formatConsole();
+  Network network;
+  // loat bias=1, int epoch=30, float lr=0.1, bool early_stopping=false
+  network.init(1,300,0.01,false);
+  // int size = 10;
+  // inputs.resize(size, vector<float>(4.0));
+  network.fit(inputs, labels);
   return 0;
 }
